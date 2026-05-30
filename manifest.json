@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Account Switcher for ERP",
+  "version": "1.0",
+  "description": "Account switcher for ERP with token file parsing. By D/C Hakan Efe Gulacti",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://app.gedenlines.com/*",
+    "https://gms.gedenlines.com/*",
+    "http://localhost:4848/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://app.gedenlines.com/*",
+        "https://gms.gedenlines.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
