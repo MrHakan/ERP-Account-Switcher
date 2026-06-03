@@ -71,7 +71,7 @@ function Get-CrewListFromDocx {
 
 # Function to parse Vessel Token DOCX file
 function Get-VesselTokenFromDocx {
-    param ($filePath)
+    param ($filePath, $vesselUsername)
     $tempZip = Join-Path $env:TEMP "temp_vessel.zip"
     $tempExtract = Join-Path $env:TEMP "temp_vessel_extract"
     if (Test-Path $tempZip) { Remove-Item $tempZip -Force }
@@ -98,7 +98,7 @@ function Get-VesselTokenFromDocx {
         }
         
         return @{
-            username = "ASPRING"
+            username = $vesselUsername
             token = $token
         }
     }
@@ -124,6 +124,10 @@ while ($listener.IsListening) {
         
         if ($req.Url.PathAndQuery.StartsWith("/api/detect")) {
             $targetPath = $req.QueryString["path"]
+            $vesselUsername = $req.QueryString["username"]
+            if (-not $vesselUsername) {
+                $vesselUsername = "ASPRING"
+            }
             
             if (-not $targetPath -or -not (Test-Path $targetPath)) {
                 $res.StatusCode = 400
@@ -150,7 +154,7 @@ while ($listener.IsListening) {
             if ($vesselFiles.Count -gt 0) {
                 $latestVesselFile = $vesselFiles[0].FullName
                 $detectedVesselFile = $vesselFiles[0].Name
-                $vesselData = Get-VesselTokenFromDocx $latestVesselFile
+                $vesselData = Get-VesselTokenFromDocx $latestVesselFile $vesselUsername
             }
             
             if ($crewFiles.Count -gt 0) {

@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const crewFilestatus = document.getElementById('crew-filestatus');
   
   // Settings selectors
+  const vesselUsernameInput = document.getElementById('vessel-username-input');
+  const vesselPasswordLabel = document.getElementById('vessel-password-label');
   const vesselPasswordInput = document.getElementById('vessel-password-input');
   const autodetectToggle = document.getElementById('autodetect-toggle');
   const folderPathInput = document.getElementById('folder-path-input');
@@ -36,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     vessel: null, // { username: "ASPRING", token: "XXXXXXX" }
     crew: [], // Array of { rank, name, email, password, token }
     settings: {
+      vesselUsername: "ASPRING",
       vesselPassword: "",
       autoDetect: false,
       folderPath: ""
@@ -114,7 +117,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Load inputs in Settings
+    vesselUsernameInput.value = appState.settings.vesselUsername || "";
     vesselPasswordInput.value = appState.settings.vesselPassword || "";
+    vesselPasswordLabel.textContent = `Vessel Password (${appState.settings.vesselUsername || 'ASPRING'})`;
     autodetectToggle.checked = appState.settings.autoDetect || false;
     folderPathInput.value = appState.settings.folderPath || "";
     
@@ -138,8 +143,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (appState.vessel) {
       vesselSection.style.display = "block";
       
-      const vName = "MT ADVANTAGE SPRING";
-      const vEmail = appState.vessel.username;
+      const vName = "Vessel Account";
+      const vEmail = appState.vessel.username || appState.settings.vesselUsername || "ASPRING";
       
       if (!cleanFilter || vName.toLowerCase().includes(cleanFilter) || vEmail.toLowerCase().includes(cleanFilter)) {
         const card = document.createElement('div');
@@ -269,7 +274,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:4848/api/detect?path=${encodeURIComponent(appState.settings.folderPath)}`);
+      const folderPath = encodeURIComponent(appState.settings.folderPath);
+      const vesselUsername = encodeURIComponent(appState.settings.vesselUsername || "ASPRING");
+      const response = await fetch(`http://localhost:4848/api/detect?path=${folderPath}&username=${vesselUsername}`);
       if (response.ok) {
         const data = await response.json();
         companionStatusDot.className = "dot online";
@@ -319,7 +326,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     return {
-      username: "ASPRING",
+      username: appState.settings.vesselUsername || "ASPRING",
       token: token
     };
   };
@@ -406,9 +413,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Settings: Save Settings Trigger
   saveSettingsBtn.addEventListener('click', async () => {
+    appState.settings.vesselUsername = vesselUsernameInput.value.trim();
     appState.settings.vesselPassword = vesselPasswordInput.value.trim();
     appState.settings.autoDetect = autodetectToggle.checked;
     appState.settings.folderPath = folderPathInput.value.trim();
+    
+    // Dynamically update existing loaded vessel details with the new username if loaded
+    if (appState.vessel) {
+      appState.vessel.username = appState.settings.vesselUsername || "ASPRING";
+    }
 
     await saveStateToStorage();
     showToast("Settings Saved Successfully");
