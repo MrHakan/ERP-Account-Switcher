@@ -59,10 +59,10 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg-dark); }
     ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--primary);
       border-radius: 3px;
     }
-    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
 
     /* Header Container */
     header {
@@ -134,6 +134,23 @@
       color: var(--primary);
     }
 
+    /* Hover preview — button shows the theme it will switch to */
+    .theme-toggle[data-preview="geden"] {
+      background-color: rgba(230, 57, 70, 0.18);
+      border-color: #e63946;
+      box-shadow: 0 0 12px rgba(230, 57, 70, 0.45);
+      color: #ffffff;
+    }
+    .theme-toggle[data-preview="geden"] .swap-icon { color: #e63946; }
+
+    .theme-toggle[data-preview="advantage"] {
+      background-color: rgba(47, 128, 237, 0.18);
+      border-color: #2f80ed;
+      box-shadow: 0 0 12px rgba(47, 128, 237, 0.45);
+      color: #ffffff;
+    }
+    .theme-toggle[data-preview="advantage"] .swap-icon { color: #2f80ed; }
+
     /* Navigation Tabs */
     .tabs {
       display: flex;
@@ -147,13 +164,14 @@
       background: none;
       border: none;
       color: var(--text-sub);
-      padding: 10px 0;
-      font-size: 13px;
+      padding: 10px 4px;
+      font-size: 12px;
       font-weight: 500;
       cursor: pointer;
       border-radius: 6px;
       transition: all 0.25s ease;
       font-family: inherit;
+      white-space: nowrap;
     }
 
     .tab-btn.active {
@@ -460,32 +478,6 @@
 
     .form-input:focus { border-color: var(--primary); }
 
-    /* Theme picker in settings */
-    .theme-options {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
-
-    .theme-chip {
-      flex: 1;
-      border: 1px solid var(--glass-border);
-      border-radius: 8px;
-      padding: 10px;
-      text-align: center;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      background: rgba(0, 0, 0, 0.25);
-      transition: all 0.2s ease;
-    }
-
-    .theme-chip.active {
-      border-color: var(--primary);
-      box-shadow: 0 0 8px var(--primary-glow);
-      color: var(--primary);
-    }
-
     .btn-save {
       width: 100%;
       background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
@@ -553,15 +545,15 @@
   <!-- Header -->
   <header>
     <div class="brand">
-      <img src="advantage-logo.png" alt="Logo" class="brand-icon" id="brand-icon">
+      <img src="geden-logo.png" alt="Logo" class="brand-icon" id="brand-icon">
       <div>
-        <div class="brand-title" id="brand-title">Advantage Tankers</div>
+        <div class="brand-title" id="brand-title">Geden Lines</div>
         <div class="brand-sub">Account Switcher</div>
       </div>
     </div>
     <button class="theme-toggle" id="theme-toggle" title="Switch theme">
       <span class="swap-icon">⇄</span>
-      <span id="theme-toggle-label">Geden</span>
+      <span id="theme-toggle-label">GedenBlue</span>
     </button>
   </header>
 
@@ -569,7 +561,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="pane-accounts">Accounts</button>
     <button class="tab-btn" data-tab="pane-upload">Files</button>
-    <button class="tab-btn" data-tab="pane-settings">Settings</button>
+    <button class="tab-btn" data-tab="pane-settings">Vessel Credentials</button>
   </div>
 
   <!-- Accounts Pane -->
@@ -626,21 +618,20 @@
     </div>
 
     <div class="hint-box">
+      📋 <b>How to make a token file:</b> Open the token email from ERP, select all the
+      text and copy it, then paste it into a blank Word (.docx) document. Save the file
+      and upload it here.
+    </div>
+
+    <div class="hint-box">
       💡 Once selected, use the <b>⟳ reload</b> button on the Accounts tab to refresh
       tokens straight from the same file — no need to pick it again every week.
+      <b>Note:</b> if you rename the file, reload will not work.
     </div>
   </div>
 
   <!-- Settings Pane -->
   <div id="pane-settings" class="content-pane">
-    <div class="form-group">
-      <label class="form-label">Theme</label>
-      <div class="theme-options">
-        <div class="theme-chip" data-theme-choice="advantage">Advantage Tankers</div>
-        <div class="theme-chip" data-theme-choice="geden">Geden Lines</div>
-      </div>
-    </div>
-
     <div class="form-group">
       <label class="form-label" for="vessel-username-input">Vessel Username</label>
       <input type="text" id="vessel-username-input" class="form-input" placeholder="e.g., ASPRING">

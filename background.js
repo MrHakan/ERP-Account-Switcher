@@ -2,7 +2,7 @@
 // Keeps the toolbar action icon in sync with the selected theme.
 
 const THEME_ICONS = {
-  advantage: "advantage-logo.png",
+  advantage: "geden-logo.png",
   geden: "geden-logo.png"
 };
 

@@ -5,8 +5,8 @@
 // ===== Static config =====
 
 const THEMES = {
-  advantage: { name: "Advantage Tankers", logo: "advantage-logo.png", toggleLabel: "Geden", next: "geden" },
-  geden:     { name: "Geden Lines",       logo: "geden-logo.png",     toggleLabel: "Advantage", next: "advantage" }
+  advantage: { name: "Geden Lines", logo: "geden-logo.png", toggleLabel: "GedenRed", next: "geden" },
+  geden:     { name: "Geden Lines",       logo: "geden-logo.png",     toggleLabel: "GedenBlue", next: "advantage" }
 };
 const DEFAULT_THEME = "advantage";
 
@@ -77,7 +77,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggleLabel = document.getElementById('theme-toggle-label');
   const brandIcon = document.getElementById('brand-icon');
   const brandTitle = document.getElementById('brand-title');
-  const themeChips = document.querySelectorAll('.theme-chip');
 
   // ===== Application State =====
   let appState = {
@@ -139,9 +138,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     brandIcon.src = t.logo;
     brandTitle.textContent = t.name;
     themeToggleLabel.textContent = t.toggleLabel;
-    themeChips.forEach(chip => {
-      chip.classList.toggle('active', chip.dataset.themeChoice === appState.theme);
-    });
   };
 
   const setTheme = async (theme) => {
@@ -153,13 +149,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     await saveStateToStorage();
   };
 
-  themeToggle.addEventListener('click', () => {
+  themeToggle.addEventListener('click', async () => {
     const next = THEMES[appState.theme].next;
-    setTheme(next);
+    await setTheme(next);
+    // Still hovering after the swap — preview the new "next" target.
+    if (themeToggle.matches(':hover')) {
+      themeToggle.dataset.preview = THEMES[appState.theme].next;
+    }
   });
 
-  themeChips.forEach(chip => {
-    chip.addEventListener('click', () => setTheme(chip.dataset.themeChoice));
+  // Hover preview: button takes on the look of the theme it will switch to.
+  themeToggle.addEventListener('mouseenter', () => {
+    themeToggle.dataset.preview = THEMES[appState.theme].next;
+  });
+  themeToggle.addEventListener('mouseleave', () => {
+    delete themeToggle.dataset.preview;
   });
 
   // ===== UI Redraw =====
@@ -297,7 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const config = PORTAL_CONFIG[urlObj.host];
     if (!config) {
-      showToast("Open a Geden Lines / Advantage portal tab first!");
+      showToast("Open a Geden Lines tab first!");
       return;
     }
 
