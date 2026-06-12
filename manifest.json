@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Account Switcher for ERP",
-  "version": "1.0",
-  "description": "Account switcher for ERP with token file parsing. By D/C Hakan Efe Gulacti",
+  "version": "2.0",
+  "description": "Account switcher for Geden Lines / Advantage Tankers ERP portals with token file parsing and theming. By D/C Hakan Efe Gulacti",
   "permissions": [
     "storage",
     "activeTab",
@@ -10,12 +10,25 @@
   ],
   "host_permissions": [
     "https://app.gedenlines.com/*",
-    "https://gms.gedenlines.com/*",
-    "http://localhost:4848/*"
+    "https://gms.gedenlines.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_icon": "icon.png"
+    "default_icon": {
+      "16": "advantage-logo.png",
+      "32": "advantage-logo.png",
+      "48": "advantage-logo.png",
+      "128": "advantage-logo.png"
+    }
+  },
+  "icons": {
+    "16": "advantage-logo.png",
+    "32": "advantage-logo.png",
+    "48": "advantage-logo.png",
+    "128": "advantage-logo.png"
   },
   "content_scripts": [
     {

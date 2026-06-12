@@ -3,21 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Geden Lines Switcher</title>
+  <title>ERP Account Switcher</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    /* ===== Theme palettes ===== */
+    body[data-theme="advantage"] {
+      --bg-dark: #0a1424;
+      --bg-card: rgba(18, 30, 52, 0.65);
+      --bg-card-hover: rgba(28, 44, 76, 0.85);
+      --primary: #2f80ed;
+      --primary-glow: rgba(47, 128, 237, 0.28);
+      --secondary: #56ccf2;
+      --accent: #f2c94c;
+      --badge-bg: rgba(47, 128, 237, 0.14);
+      --header-grad: linear-gradient(135deg, #122745 0%, #050b16 100%);
+    }
+    body[data-theme="geden"] {
+      --bg-dark: #160d10;
+      --bg-card: rgba(40, 22, 26, 0.65);
+      --bg-card-hover: rgba(60, 30, 36, 0.85);
+      --primary: #e63946;
+      --primary-glow: rgba(230, 57, 70, 0.28);
+      --secondary: #ff6b6b;
+      --accent: #f4a261;
+      --badge-bg: rgba(230, 57, 70, 0.14);
+      --header-grad: linear-gradient(135deg, #3a181d 0%, #120709 100%);
+    }
+
     :root {
-      --bg-dark: #090d16;
-      --bg-card: rgba(18, 26, 47, 0.65);
-      --bg-card-hover: rgba(26, 38, 68, 0.85);
-      --primary: #00d2c4;
-      --primary-glow: rgba(0, 210, 196, 0.25);
-      --secondary: #6366f1;
       --text-main: #f3f4f6;
       --text-sub: #9ca3af;
-      --accent: #f59e0b;
       --glass-border: rgba(255, 255, 255, 0.08);
-      --badge-bg: rgba(0, 210, 196, 0.12);
     }
 
     * {
@@ -36,27 +52,22 @@
       overflow-y: auto;
       border: 1px solid var(--glass-border);
       padding: 0;
+      transition: background-color 0.3s ease;
     }
 
     /* Scrollbar Styling */
-    ::-webkit-scrollbar {
-      width: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: var(--bg-dark);
-    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
     ::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.15);
       border-radius: 3px;
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--primary);
-    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
     /* Header Container */
     header {
-      background: linear-gradient(135deg, #111827 0%, #030712 100%);
-      padding: 16px 20px;
+      background: var(--header-grad);
+      padding: 14px 18px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -73,50 +84,60 @@
     }
 
     .brand-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
       box-shadow: 0 0 10px var(--primary-glow);
     }
 
     .brand-title {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
       background: linear-gradient(to right, #ffffff, var(--primary));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      letter-spacing: 0.4px;
+      line-height: 1.1;
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      color: var(--text-sub);
       letter-spacing: 0.5px;
     }
 
-    .status-indicator {
+    /* Theme toggle button (top-right) */
+    .theme-toggle {
       display: flex;
       align-items: center;
       gap: 6px;
+      background-color: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 6px 10px;
+      color: var(--text-main);
       font-size: 11px;
-      color: var(--text-sub);
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.25s ease;
+      white-space: nowrap;
     }
 
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: var(--text-sub);
+    .theme-toggle:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
     }
 
-    .dot.online {
-      background-color: var(--primary);
-      box-shadow: 0 0 8px var(--primary);
-    }
-
-    .dot.offline {
-      background-color: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
+    .theme-toggle .swap-icon {
+      font-size: 13px;
+      color: var(--primary);
     }
 
     /* Navigation Tabs */
     .tabs {
       display: flex;
-      background-color: rgba(17, 24, 39, 0.4);
+      background-color: rgba(0, 0, 0, 0.25);
       padding: 4px;
       border-bottom: 1px solid var(--glass-border);
     }
@@ -148,19 +169,24 @@
       display: none;
     }
 
-    .content-pane.active {
-      display: block;
+    .content-pane.active { display: block; }
+
+    /* Accounts toolbar (search + reload) */
+    .accounts-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
     }
 
-    /* Accounts Tab styling */
     .search-box {
       position: relative;
-      margin-bottom: 16px;
+      flex: 1;
     }
 
     .search-input {
       width: 100%;
-      background-color: rgba(17, 24, 39, 0.8);
+      background-color: rgba(0, 0, 0, 0.35);
       border: 1px solid var(--glass-border);
       border-radius: 8px;
       padding: 10px 12px;
@@ -174,6 +200,44 @@
     .search-input:focus {
       border-color: var(--primary);
       box-shadow: 0 0 8px var(--primary-glow);
+    }
+
+    .reload-btn {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background-color: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--glass-border);
+      color: var(--primary);
+      font-size: 17px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s ease;
+    }
+
+    .reload-btn:hover:not(:disabled) {
+      border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+      background-color: var(--primary);
+      color: var(--bg-dark);
+    }
+
+    .reload-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .reload-btn.spinning .reload-glyph {
+      display: inline-block;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     .section-title {
@@ -207,13 +271,13 @@
     }
 
     .vessel-card {
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(18, 26, 47, 0.65) 100%);
-      border-color: rgba(99, 102, 241, 0.25);
+      background: linear-gradient(135deg, var(--primary-glow) 0%, var(--bg-card) 100%);
+      border-color: var(--primary-glow);
     }
 
     .vessel-card:hover {
       border-color: var(--secondary);
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+      box-shadow: 0 4px 12px var(--primary-glow);
     }
 
     .account-info {
@@ -221,6 +285,7 @@
       flex-direction: column;
       gap: 3px;
       flex-grow: 1;
+      min-width: 0;
     }
 
     .account-title-row {
@@ -246,13 +311,16 @@
     }
 
     .vessel-badge {
-      background-color: rgba(99, 102, 241, 0.15);
-      color: #a5b4fc;
+      background-color: var(--badge-bg);
+      color: var(--secondary);
     }
 
     .account-email {
       font-size: 11.5px;
       color: var(--text-sub);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .action-indicator {
@@ -265,6 +333,8 @@
       justify-content: center;
       transition: all 0.2s ease;
       color: var(--text-sub);
+      flex-shrink: 0;
+      margin-left: 8px;
     }
 
     .account-card:hover .action-indicator {
@@ -284,7 +354,7 @@
       padding: 24px 16px;
       text-align: center;
       cursor: pointer;
-      background-color: rgba(17, 24, 39, 0.2);
+      background-color: rgba(0, 0, 0, 0.15);
       transition: all 0.25s ease;
       margin-bottom: 16px;
       position: relative;
@@ -292,7 +362,7 @@
 
     .dropzone-container:hover, .dropzone-container.dragover {
       border-color: var(--primary);
-      background-color: rgba(0, 210, 196, 0.03);
+      background-color: var(--primary-glow);
     }
 
     .dropzone-icon {
@@ -314,7 +384,7 @@
     }
 
     .file-status {
-      background: rgba(17, 24, 39, 0.6);
+      background: rgba(0, 0, 0, 0.25);
       border: 1px solid var(--glass-border);
       border-radius: 8px;
       padding: 10px 14px;
@@ -351,10 +421,19 @@
       color: #f87171;
     }
 
-    /* Settings Pane */
-    .form-group {
-      margin-bottom: 14px;
+    .hint-box {
+      font-size: 11px;
+      color: var(--text-sub);
+      line-height: 1.5;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 4px;
     }
+
+    /* Settings Pane */
+    .form-group { margin-bottom: 14px; }
 
     .form-label {
       display: block;
@@ -368,7 +447,7 @@
 
     .form-input {
       width: 100%;
-      background-color: rgba(17, 24, 39, 0.8);
+      background-color: rgba(0, 0, 0, 0.35);
       border: 1px solid var(--glass-border);
       border-radius: 8px;
       padding: 10px 12px;
@@ -379,75 +458,38 @@
       transition: all 0.25s ease;
     }
 
-    .form-input:focus {
-      border-color: var(--primary);
-    }
+    .form-input:focus { border-color: var(--primary); }
 
-    .switch-container {
+    /* Theme picker in settings */
+    .theme-options {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin: 16px 0;
-      padding-top: 8px;
+      gap: 10px;
+      margin-bottom: 6px;
     }
 
-    .switch-label {
-      font-size: 13.5px;
-      font-weight: 500;
-    }
-
-    /* Toggle switch widget */
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-    }
-
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(255, 255, 255, 0.1);
-      transition: .3s;
-      border-radius: 34px;
+    .theme-chip {
+      flex: 1;
       border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.25);
+      transition: all 0.2s ease;
     }
 
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 14px;
-      width: 14px;
-      left: 3px;
-      bottom: 3px;
-      background-color: var(--text-sub);
-      transition: .3s;
-      border-radius: 50%;
-    }
-
-    input:checked + .slider {
-      background-color: var(--primary);
-    }
-
-    input:checked + .slider:before {
-      transform: translateX(18px);
-      background-color: var(--bg-dark);
+    .theme-chip.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 8px var(--primary-glow);
+      color: var(--primary);
     }
 
     .btn-save {
       width: 100%;
-      background: linear-gradient(135deg, var(--primary) 0%, #00a498 100%);
-      color: var(--bg-dark);
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: #ffffff;
       border: none;
       border-radius: 8px;
       padding: 11px 0;
@@ -456,12 +498,12 @@
       cursor: pointer;
       font-family: inherit;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 10px rgba(0, 210, 196, 0.15);
+      box-shadow: 0 4px 10px var(--primary-glow);
       margin-top: 8px;
     }
 
     .btn-save:hover {
-      box-shadow: 0 4px 15px rgba(0, 210, 196, 0.3);
+      box-shadow: 0 4px 15px var(--primary-glow);
       transform: translateY(-1px);
     }
 
@@ -479,10 +521,7 @@
       display: block;
     }
 
-    /* Hidden file inputs */
-    .hidden-input {
-      display: none;
-    }
+    .hidden-input { display: none; }
 
     /* Notification message */
     .toast {
@@ -490,7 +529,7 @@
       bottom: 16px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: rgba(18, 26, 47, 0.95);
+      background: var(--bg-card-hover);
       border: 1px solid var(--primary);
       border-radius: 6px;
       padding: 8px 16px;
@@ -500,6 +539,9 @@
       box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
       transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
       white-space: nowrap;
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .toast.show {
@@ -507,17 +549,20 @@
     }
   </style>
 </head>
-<body>
+<body data-theme="advantage">
   <!-- Header -->
   <header>
     <div class="brand">
-      <img src="icon.png" alt="Geden Logo" class="brand-icon">
-      <span class="brand-title">Account Switcher</span>
+      <img src="advantage-logo.png" alt="Logo" class="brand-icon" id="brand-icon">
+      <div>
+        <div class="brand-title" id="brand-title">Advantage Tankers</div>
+        <div class="brand-sub">Account Switcher</div>
+      </div>
     </div>
-    <div class="status-indicator">
-      <span id="companion-status-dot" class="dot offline"></span>
-      <span id="companion-status-text">Local Server Offline</span>
-    </div>
+    <button class="theme-toggle" id="theme-toggle" title="Switch theme">
+      <span class="swap-icon">⇄</span>
+      <span id="theme-toggle-label">Geden</span>
+    </button>
   </header>
 
   <!-- Navigation -->
@@ -529,16 +574,19 @@
 
   <!-- Accounts Pane -->
   <div id="pane-accounts" class="content-pane active">
-    <div class="search-box">
-      <input type="text" id="search-bar" class="search-input" placeholder="Search rank, name, or email...">
+    <div class="accounts-toolbar">
+      <div class="search-box">
+        <input type="text" id="search-bar" class="search-input" placeholder="Search rank, name, or email...">
+      </div>
+      <button class="reload-btn" id="reload-btn" title="Reload &amp; re-parse selected Word files">
+        <span class="reload-glyph">⟳</span>
+      </button>
     </div>
 
     <!-- Vessel Account Section -->
     <div id="vessel-section" style="display: none;">
       <div class="section-title">Vessel Account</div>
-      <div id="vessel-account-container">
-        <!-- Filled dynamically -->
-      </div>
+      <div id="vessel-account-container"></div>
     </div>
 
     <!-- Crew Accounts Section -->
@@ -546,7 +594,7 @@
     <div id="crew-list-container">
       <div class="empty-state">
         <span class="empty-state-icon">📂</span>
-        No crew data loaded.<br>Use auto-detection or upload token files in the Files tab.
+        No crew data loaded.<br>Upload token files in the Files tab.
       </div>
     </div>
   </div>
@@ -556,14 +604,14 @@
     <div class="dropzone-container" id="vessel-dropzone">
       <span class="dropzone-icon">🛳️</span>
       <span class="dropzone-text">Vessel Token File</span>
-      <span class="dropzone-subtext">Click or drag & drop TOKEN*.docx</span>
+      <span class="dropzone-subtext">Click or drag &amp; drop TOKEN*.docx</span>
       <input type="file" id="vessel-file-input" class="hidden-input" accept=".docx">
     </div>
 
     <div class="dropzone-container" id="crew-dropzone">
       <span class="dropzone-icon">👥</span>
       <span class="dropzone-text">Crew Token File</span>
-      <span class="dropzone-subtext">Click or drag & drop WEEKLY CREW TOKENS*.docx</span>
+      <span class="dropzone-subtext">Click or drag &amp; drop WEEKLY CREW TOKENS*.docx</span>
       <input type="file" id="crew-file-input" class="hidden-input" accept=".docx">
     </div>
 
@@ -576,10 +624,23 @@
       <span class="name" id="crew-filename">crew-tokens.docx</span>
       <span class="status-badge missing" id="crew-filestatus">Missing</span>
     </div>
+
+    <div class="hint-box">
+      💡 Once selected, use the <b>⟳ reload</b> button on the Accounts tab to refresh
+      tokens straight from the same file — no need to pick it again every week.
+    </div>
   </div>
 
   <!-- Settings Pane -->
   <div id="pane-settings" class="content-pane">
+    <div class="form-group">
+      <label class="form-label">Theme</label>
+      <div class="theme-options">
+        <div class="theme-chip" data-theme-choice="advantage">Advantage Tankers</div>
+        <div class="theme-chip" data-theme-choice="geden">Geden Lines</div>
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="vessel-username-input">Vessel Username</label>
       <input type="text" id="vessel-username-input" class="form-input" placeholder="e.g., ASPRING">
@@ -590,20 +651,7 @@
       <input type="password" id="vessel-password-input" class="form-input" placeholder="Enter vessel password...">
     </div>
 
-    <div class="switch-container">
-      <span class="switch-label">Auto-Detect Files</span>
-      <label class="switch">
-        <input type="checkbox" id="autodetect-toggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    <div class="form-group" id="folder-path-group">
-      <label class="form-label" for="folder-path-input">Auto-Detect Folder Path</label>
-      <input type="text" id="folder-path-input" class="form-input" placeholder="e.g., \\10.0.7.13\mt advantage spring">
-    </div>
-
-    <button id="save-settings-btn" class="btn-save">Save & Sync</button>
+    <button id="save-settings-btn" class="btn-save">Save Settings</button>
   </div>
 
   <!-- Toast Notification -->

@@ -1,101 +1,169 @@
-// Geden Lines Account Switcher Popup Logic
+// ERP Account Switcher — Popup Logic
+// Supports Advantage Tankers / Geden Lines theming, domain-aware login,
+// and reloading tokens straight from the previously selected Word files.
+
+// ===== Static config =====
+
+const THEMES = {
+  advantage: { name: "Advantage Tankers", logo: "advantage-logo.png", toggleLabel: "Geden", next: "geden" },
+  geden:     { name: "Geden Lines",       logo: "geden-logo.png",     toggleLabel: "Advantage", next: "advantage" }
+};
+const DEFAULT_THEME = "advantage";
+
+// Per-portal logout/login routing. Keys are URL hosts.
+const PORTAL_CONFIG = {
+  "app.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon" },
+  "gms.gedenlines.com": { logoutPath: "/Logout",         loginPath: "/login" }
+};
+
+// ===== Tiny IndexedDB store for FileSystemFileHandles (so we can re-read on reload) =====
+
+const DB_NAME = "erp-switcher";
+const HANDLE_STORE = "handles";
+
+const openHandleDB = () => new Promise((resolve, reject) => {
+  const req = indexedDB.open(DB_NAME, 1);
+  req.onupgradeneeded = () => req.result.createObjectStore(HANDLE_STORE);
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+});
+
+const idbSetHandle = async (key, value) => {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readwrite");
+    tx.objectStore(HANDLE_STORE).put(value, key);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+const idbGetHandle = async (key) => {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readonly");
+    const r = tx.objectStore(HANDLE_STORE).get(key);
+    r.onsuccess = () => { db.close(); resolve(r.result); };
+    r.onerror = () => reject(r.error);
+  });
+};
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // UI Selectors
+  // ===== UI Selectors =====
   const tabs = document.querySelectorAll('.tab-btn');
   const panes = document.querySelectorAll('.content-pane');
   const searchBar = document.getElementById('search-bar');
+  const reloadBtn = document.getElementById('reload-btn');
   const vesselAccountContainer = document.getElementById('vessel-account-container');
   const vesselSection = document.getElementById('vessel-section');
   const crewListContainer = document.getElementById('crew-list-container');
-  
-  // File inputs and Dropzones
+
   const vesselDropzone = document.getElementById('vessel-dropzone');
   const crewDropzone = document.getElementById('crew-dropzone');
   const vesselFileInput = document.getElementById('vessel-file-input');
   const crewFileInput = document.getElementById('crew-file-input');
-  
+
   const vesselFilename = document.getElementById('vessel-filename');
   const vesselFilestatus = document.getElementById('vessel-filestatus');
   const crewFilename = document.getElementById('crew-filename');
   const crewFilestatus = document.getElementById('crew-filestatus');
-  
-  // Settings selectors
+
   const vesselUsernameInput = document.getElementById('vessel-username-input');
   const vesselPasswordLabel = document.getElementById('vessel-password-label');
   const vesselPasswordInput = document.getElementById('vessel-password-input');
-  const autodetectToggle = document.getElementById('autodetect-toggle');
-  const folderPathInput = document.getElementById('folder-path-input');
-  const folderPathGroup = document.getElementById('folder-path-group');
   const saveSettingsBtn = document.getElementById('save-settings-btn');
-  
-  // Companion Status selectors
-  const companionStatusDot = document.getElementById('companion-status-dot');
-  const companionStatusText = document.getElementById('companion-status-text');
 
-  // Application State
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeToggleLabel = document.getElementById('theme-toggle-label');
+  const brandIcon = document.getElementById('brand-icon');
+  const brandTitle = document.getElementById('brand-title');
+  const themeChips = document.querySelectorAll('.theme-chip');
+
+  // ===== Application State =====
   let appState = {
-    vessel: null, // { username: "ASPRING", token: "XXXXXXX" }
-    crew: [], // Array of { rank, name, email, password, token }
+    theme: DEFAULT_THEME,
+    vessel: null, // { username, token }
+    crew: [],     // [{ rank, name, email, password, token }]
     settings: {
       vesselUsername: "ASPRING",
-      vesselPassword: "",
-      autoDetect: false,
-      folderPath: ""
+      vesselPassword: ""
     },
-    loadedFiles: {
-      vessel: "",
-      crew: ""
-    }
+    loadedFiles: { vessel: "", crew: "" }
   };
 
-  // 1. Navigation Event Handling
+  // ===== Toast =====
+  const showToast = (message) => {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  };
+
+  // ===== Navigation =====
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
       panes.forEach(p => p.classList.remove('active'));
-      
       tab.classList.add('active');
       const targetPane = document.getElementById(tab.dataset.tab);
       if (targetPane) targetPane.classList.add('active');
     });
   });
 
-  // 2. Local Storage Sync
-  const loadStateFromStorage = async () => {
-    return new Promise(resolve => {
-      chrome.storage.local.get(['vessel', 'crew', 'settings', 'loadedFiles'], (result) => {
-        if (result.vessel) appState.vessel = result.vessel;
-        if (result.crew) appState.crew = result.crew;
-        if (result.settings) appState.settings = { ...appState.settings, ...result.settings };
-        if (result.loadedFiles) appState.loadedFiles = { ...appState.loadedFiles, ...result.loadedFiles };
-        resolve();
-      });
+  // ===== Storage sync =====
+  const loadStateFromStorage = () => new Promise(resolve => {
+    chrome.storage.local.get(['theme', 'vessel', 'crew', 'settings', 'loadedFiles'], (result) => {
+      if (result.theme && THEMES[result.theme]) appState.theme = result.theme;
+      if (result.vessel) appState.vessel = result.vessel;
+      if (result.crew) appState.crew = result.crew;
+      if (result.settings) appState.settings = { ...appState.settings, ...result.settings };
+      if (result.loadedFiles) appState.loadedFiles = { ...appState.loadedFiles, ...result.loadedFiles };
+      resolve();
+    });
+  });
+
+  const saveStateToStorage = () => new Promise(resolve => {
+    chrome.storage.local.set({
+      theme: appState.theme,
+      vessel: appState.vessel,
+      crew: appState.crew,
+      settings: appState.settings,
+      loadedFiles: appState.loadedFiles
+    }, () => resolve());
+  });
+
+  // ===== Theme =====
+  const applyTheme = () => {
+    const t = THEMES[appState.theme] || THEMES[DEFAULT_THEME];
+    document.body.setAttribute('data-theme', appState.theme);
+    brandIcon.src = t.logo;
+    brandTitle.textContent = t.name;
+    themeToggleLabel.textContent = t.toggleLabel;
+    themeChips.forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.themeChoice === appState.theme);
     });
   };
 
-  const saveStateToStorage = async () => {
-    return new Promise(resolve => {
-      chrome.storage.local.set({
-        vessel: appState.vessel,
-        crew: appState.crew,
-        settings: appState.settings,
-        loadedFiles: appState.loadedFiles
-      }, () => resolve());
-    });
+  const setTheme = async (theme) => {
+    if (!THEMES[theme]) return;
+    appState.theme = theme;
+    applyTheme();
+    // Persist theme on its own too so the background worker can swap the toolbar icon.
+    chrome.storage.local.set({ theme });
+    await saveStateToStorage();
   };
 
-  // Show dynamic toast notifications
-  const showToast = (message) => {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2000);
-  };
+  themeToggle.addEventListener('click', () => {
+    const next = THEMES[appState.theme].next;
+    setTheme(next);
+  });
 
-  // 3. UI Redraw functions
+  themeChips.forEach(chip => {
+    chip.addEventListener('click', () => setTheme(chip.dataset.themeChoice));
+  });
+
+  // ===== UI Redraw =====
   const updateUI = () => {
-    // Redraw File Status Badges
     if (appState.loadedFiles.vessel) {
       vesselFilename.textContent = appState.loadedFiles.vessel;
       vesselFilestatus.textContent = "Loaded";
@@ -116,46 +184,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       crewFilestatus.className = "status-badge missing";
     }
 
-    // Load inputs in Settings
     vesselUsernameInput.value = appState.settings.vesselUsername || "";
     vesselPasswordInput.value = appState.settings.vesselPassword || "";
     vesselPasswordLabel.textContent = `Vessel Password (${appState.settings.vesselUsername || 'ASPRING'})`;
-    autodetectToggle.checked = appState.settings.autoDetect || false;
-    folderPathInput.value = appState.settings.folderPath || "";
-    
-    if (appState.settings.autoDetect) {
-      folderPathGroup.style.display = "block";
-    } else {
-      folderPathGroup.style.display = "none";
-    }
 
-    // Redraw Account lists
-    renderAccounts();
+    applyTheme();
+    renderAccounts(searchBar.value || "");
   };
 
-  // Filter and display accounts in the UI
+  // Escape user-derived strings before injecting into innerHTML.
+  const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+
   const renderAccounts = (filter = "") => {
     vesselAccountContainer.innerHTML = "";
     crewListContainer.innerHTML = "";
     const cleanFilter = filter.toLowerCase().trim();
 
-    // 1. Vessel section
+    // Vessel section
     if (appState.vessel) {
       vesselSection.style.display = "block";
-      
       const vName = "Vessel Account";
       const vEmail = appState.vessel.username || appState.settings.vesselUsername || "ASPRING";
-      
+
       if (!cleanFilter || vName.toLowerCase().includes(cleanFilter) || vEmail.toLowerCase().includes(cleanFilter)) {
         const card = document.createElement('div');
         card.className = "vessel-card";
         card.innerHTML = `
           <div class="account-info">
             <div class="account-title-row">
-              <span class="account-name">${vName}</span>
+              <span class="account-name">${esc(vName)}</span>
               <span class="account-rank-badge vessel-badge">Vessel</span>
             </div>
-            <span class="account-email">User: ${vEmail} | Token: ${appState.vessel.token}</span>
+            <span class="account-email">User: ${esc(vEmail)} | Token: ${esc(appState.vessel.token)}</span>
           </div>
           <div class="action-indicator">🔑</div>
         `;
@@ -166,12 +228,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       vesselSection.style.display = "none";
     }
 
-    // 2. Crew list
+    // Crew list
     if (appState.crew && appState.crew.length > 0) {
       const filteredCrew = appState.crew.filter(c => {
         if (!cleanFilter) return true;
-        return c.name.toLowerCase().includes(cleanFilter) || 
-               c.rank.toLowerCase().includes(cleanFilter) || 
+        return c.name.toLowerCase().includes(cleanFilter) ||
+               c.rank.toLowerCase().includes(cleanFilter) ||
                c.email.toLowerCase().includes(cleanFilter);
       });
 
@@ -182,10 +244,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           card.innerHTML = `
             <div class="account-info">
               <div class="account-title-row">
-                <span class="account-name">${c.name}</span>
-                <span class="account-rank-badge">${c.rank}</span>
+                <span class="account-name">${esc(c.name)}</span>
+                <span class="account-rank-badge">${esc(c.rank)}</span>
               </div>
-              <span class="account-email">${c.email} | Token: ${c.token}</span>
+              <span class="account-email">${esc(c.email)} | Token: ${esc(c.token)}</span>
             </div>
             <div class="action-indicator">➜</div>
           `;
@@ -193,263 +255,277 @@ document.addEventListener('DOMContentLoaded', async () => {
           crewListContainer.appendChild(card);
         });
       } else {
-        crewListContainer.innerHTML = `<div class="empty-state">No matching accounts found for "${filter}"</div>`;
+        crewListContainer.innerHTML = `<div class="empty-state">No matching accounts found for "${esc(filter)}"</div>`;
       }
     } else {
       crewListContainer.innerHTML = `
         <div class="empty-state">
           <span class="empty-state-icon">📂</span>
-          No crew data loaded.<br>Use auto-detection or upload token files in the Files tab.
+          No crew data loaded.<br>Upload token files in the Files tab.
         </div>
       `;
     }
   };
 
-  // Trigger autofill action via background script
+  // ===== Autofill / login routing =====
+  const sendAutofill = (tabId, data) => {
+    chrome.tabs.sendMessage(tabId, { action: "autofill", data }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Content script not injected yet — inject then retry once.
+        chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }, () => {
+          chrome.tabs.sendMessage(tabId, { action: "autofill", data }, (res) => {
+            if (res && res.success) showToast("Switched and logging in!");
+          });
+        });
+      } else if (response && response.success) {
+        showToast("Switched and logging in!");
+      } else if (response && response.message) {
+        showToast(response.message);
+      }
+    });
+  };
+
   const triggerAutofill = async (username, password, token) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) {
+    if (!tab || !tab.url) {
       showToast("No active browser tab found.");
       return;
     }
 
-    if (!tab.url.includes("gedenlines.com")) {
-      showToast("Navigate to a gedenlines.com portal first!");
+    let urlObj;
+    try { urlObj = new URL(tab.url); } catch { showToast("Unsupported page."); return; }
+
+    const config = PORTAL_CONFIG[urlObj.host];
+    if (!config) {
+      showToast("Open a Geden Lines / Advantage portal tab first!");
       return;
     }
 
-    const urlLower = tab.url.toLowerCase();
-    const isLogonPage = urlLower.includes('/account/logon');
+    const path = urlObj.pathname.toLowerCase();
+    const onLoginPage = path.startsWith(config.loginPath.toLowerCase());
 
-    if (isLogonPage) {
-      // Direct form autofill injection
-      chrome.tabs.sendMessage(tab.id, {
-        action: "autofill",
-        data: { username, password, token }
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          // Content script might not be injected yet
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ["content.js"]
-          }, () => {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "autofill",
-              data: { username, password, token }
-            }, (res) => {
-              if (res && res.success) {
-                showToast("Switched and Logging in!");
-              }
-            });
-          });
-        } else if (response && response.success) {
-          showToast("Switched and Logging in!");
-        }
-      });
+    if (onLoginPage) {
+      sendAutofill(tab.id, { username, password, token });
     } else {
-      // User is logged in on another dashboard. Redirect to /Account/Logout first
-      try {
-        const urlObj = new URL(tab.url);
-        const origin = urlObj.origin;
-        const logoffUrl = `${origin}/Account/Logout`;
-
-        chrome.storage.local.set({
-          pendingLogin: { username, password, token }
-        }, () => {
-          showToast("Logging out current account...");
-          chrome.tabs.update(tab.id, { url: logoffUrl });
-        });
-      } catch (err) {
-        showToast("Error executing logoff redirect.");
-      }
+      // Logged in elsewhere — log out first, then the content script auto-fills on the login page.
+      const loginUrl = urlObj.origin + config.loginPath;
+      const logoutUrl = urlObj.origin + config.logoutPath;
+      chrome.storage.local.set({
+        pendingLogin: { username, password, token, loginUrl }
+      }, () => {
+        showToast("Logging out current account...");
+        chrome.tabs.update(tab.id, { url: logoutUrl });
+      });
     }
   };
 
-  // 4. Companion Server Check
-  const checkCompanionStatus = async () => {
-    if (!appState.settings.autoDetect) {
-      companionStatusDot.className = "dot offline";
-      companionStatusText.textContent = "Auto Detect Disabled";
-      return false;
-    }
-
-    try {
-      const folderPath = encodeURIComponent(appState.settings.folderPath);
-      const vesselUsername = encodeURIComponent(appState.settings.vesselUsername || "ASPRING");
-      const response = await fetch(`http://localhost:4848/api/detect?path=${folderPath}&username=${vesselUsername}`);
-      if (response.ok) {
-        const data = await response.json();
-        companionStatusDot.className = "dot online";
-        companionStatusText.textContent = "Companion Synced";
-        
-        // Sync detected files to state
-        if (data.vessel) {
-          appState.vessel = data.vessel;
-          appState.loadedFiles.vessel = data.vesselFile;
-        }
-        if (data.crew) {
-          appState.crew = data.crew;
-          appState.loadedFiles.crew = data.crewFile;
-        }
-        
-        await saveStateToStorage();
-        updateUI();
-        return true;
-      }
-    } catch (e) {
-      // Companion server is not running
-    }
-    
-    companionStatusDot.className = "dot offline";
-    companionStatusText.textContent = "Local Server Offline";
-    return false;
-  };
-
-  // 5. In-Browser OpenXML DOCX parsing using pure JSZip
+  // ===== DOCX parsing (pure JSZip, no server) =====
   const parseVesselTokenLocal = async (arrayBuffer) => {
     const zip = await JSZip.loadAsync(arrayBuffer);
     const docXmlText = await zip.file("word/document.xml").async("text");
-    
-    // Simple regex search for token in text elements
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(docXmlText, "text/xml");
+    const xmlDoc = new DOMParser().parseFromString(docXmlText, "text/xml");
     const tNodes = xmlDoc.getElementsByTagNameNS("*", "t");
     let fullText = "";
-    for (let i = 0; i < tNodes.length; i++) {
-      fullText += tNodes[i].textContent + " ";
-    }
-    
+    for (let i = 0; i < tNodes.length; i++) fullText += tNodes[i].textContent + " ";
+
     let token = "";
     const match = fullText.match(/is\s*:\s*([A-Z0-9]{7})/);
-    if (match) {
-      token = match[1];
-    }
-    
-    return {
-      username: appState.settings.vesselUsername || "ASPRING",
-      token: token
-    };
+    if (match) token = match[1];
+
+    return { username: appState.settings.vesselUsername || "ASPRING", token };
   };
 
   const parseCrewTokensLocal = async (arrayBuffer) => {
     const zip = await JSZip.loadAsync(arrayBuffer);
     const docXmlText = await zip.file("word/document.xml").async("text");
-    
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(docXmlText, "text/xml");
+    const xmlDoc = new DOMParser().parseFromString(docXmlText, "text/xml");
     const rows = xmlDoc.getElementsByTagNameNS("*", "tr");
-    
+
+    const getCellText = (cell) => {
+      const tTags = cell.getElementsByTagNameNS("*", "t");
+      let str = "";
+      for (let j = 0; j < tTags.length; j++) str += tTags[j].textContent;
+      return str.trim();
+    };
+
     const crewList = [];
-    
-    // Skip row 0 (headers)
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = 1; i < rows.length; i++) { // skip header row
       const cells = rows[i].getElementsByTagNameNS("*", "tc");
       if (cells.length >= 5) {
-        const getCellText = (cell) => {
-          const tTags = cell.getElementsByTagNameNS("*", "t");
-          let str = "";
-          for (let j = 0; j < tTags.length; j++) {
-            str += tTags[j].textContent;
-          }
-          return str.trim();
-        };
-
         const rank = getCellText(cells[0]);
         const name = getCellText(cells[1]);
         const email = getCellText(cells[2]);
         const password = getCellText(cells[3]);
         const token = getCellText(cells[4]);
-
-        if (email && token) {
-          crewList.push({ rank, name, email, password, token });
-        }
+        if (email && token) crewList.push({ rank, name, email, password, token });
       }
     }
     return crewList;
   };
 
-  // Local file picker uploads
-  const handleLocalUpload = async (file, type) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const buffer = e.target.result;
-        if (type === "vessel") {
-          const vesselData = await parseVesselTokenLocal(buffer);
-          appState.vessel = vesselData;
-          appState.loadedFiles.vessel = file.name;
-          showToast("Vessel token loaded successfully!");
-        } else {
-          const crewList = await parseCrewTokensLocal(buffer);
-          appState.crew = crewList;
-          appState.loadedFiles.crew = file.name;
-          showToast(`Loaded ${crewList.length} crew accounts!`);
-        }
-        await saveStateToStorage();
-        updateUI();
-      } catch (err) {
-        console.error("Error parsing DOCX file:", err);
-        showToast("Error parsing Word document. Please ensure it's valid.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
+  // Parse an ArrayBuffer into state for the given type.
+  const processBuffer = async (buffer, type, filename) => {
+    if (type === "vessel") {
+      appState.vessel = await parseVesselTokenLocal(buffer);
+      appState.loadedFiles.vessel = filename;
+      showToast("Vessel token loaded successfully!");
+    } else {
+      appState.crew = await parseCrewTokensLocal(buffer);
+      appState.loadedFiles.crew = filename;
+      showToast(`Loaded ${appState.crew.length} crew accounts!`);
+    }
+    await saveStateToStorage();
+    updateUI();
   };
 
-  // 6. UI Interaction Setup
-  
-  // Search bar input
-  searchBar.addEventListener('input', (e) => {
-    renderAccounts(e.target.value);
-  });
+  // ===== File handle permission helper =====
+  const ensureReadPermission = async (handle) => {
+    const opts = { mode: "read" };
+    if (await handle.queryPermission(opts) === "granted") return true;
+    if (await handle.requestPermission(opts) === "granted") return true;
+    return false;
+  };
 
-  // Settings: Autodetect Toggle display sync
-  autodetectToggle.addEventListener('change', (e) => {
-    if (e.target.checked) {
-      folderPathGroup.style.display = "block";
-    } else {
-      folderPathGroup.style.display = "none";
+  // Load from a FileSystemFileHandle and remember it for future reloads.
+  const loadFromHandle = async (handle, type) => {
+    try {
+      if (!(await ensureReadPermission(handle))) {
+        showToast("Permission to read the file was denied.");
+        return;
+      }
+      const file = await handle.getFile();
+      const buffer = await file.arrayBuffer();
+      await processBuffer(buffer, type, file.name);
+      await idbSetHandle(type === "vessel" ? "vesselHandle" : "crewHandle", handle);
+    } catch (err) {
+      console.error("Error reading file handle:", err);
+      showToast("Error parsing Word document. Please ensure it's valid.");
     }
-  });
+  };
 
-  // Settings: Save Settings Trigger
+  // Fallback: load from a plain File (no handle → cannot be reloaded later).
+  const loadFromFile = async (file, type) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      await processBuffer(buffer, type, file.name);
+    } catch (err) {
+      console.error("Error parsing DOCX file:", err);
+      showToast("Error parsing Word document. Please ensure it's valid.");
+    }
+  };
+
+  // ===== Reload from previously selected files =====
+  const reloadFiles = async () => {
+    const vesselHandle = await idbGetHandle("vesselHandle").catch(() => null);
+    const crewHandle = await idbGetHandle("crewHandle").catch(() => null);
+
+    if (!vesselHandle && !crewHandle) {
+      showToast("No files selected yet — pick them in the Files tab first.");
+      return;
+    }
+
+    reloadBtn.classList.add('spinning');
+    reloadBtn.disabled = true;
+
+    let reloaded = 0;
+    try {
+      if (vesselHandle && await ensureReadPermission(vesselHandle)) {
+        const file = await vesselHandle.getFile();
+        appState.vessel = await parseVesselTokenLocal(await file.arrayBuffer());
+        appState.loadedFiles.vessel = file.name;
+        reloaded++;
+      }
+      if (crewHandle && await ensureReadPermission(crewHandle)) {
+        const file = await crewHandle.getFile();
+        appState.crew = await parseCrewTokensLocal(await file.arrayBuffer());
+        appState.loadedFiles.crew = file.name;
+        reloaded++;
+      }
+      await saveStateToStorage();
+      updateUI();
+      showToast(reloaded > 0 ? "Tokens refreshed from file!" : "Could not access the saved files.");
+    } catch (err) {
+      console.error("Reload failed:", err);
+      showToast("Reload failed — the file may have moved or been removed.");
+    } finally {
+      reloadBtn.classList.remove('spinning');
+      reloadBtn.disabled = false;
+    }
+  };
+
+  reloadBtn.addEventListener('click', reloadFiles);
+
+  // ===== Search =====
+  searchBar.addEventListener('input', (e) => renderAccounts(e.target.value));
+
+  // ===== Settings save =====
   saveSettingsBtn.addEventListener('click', async () => {
     appState.settings.vesselUsername = vesselUsernameInput.value.trim();
     appState.settings.vesselPassword = vesselPasswordInput.value.trim();
-    appState.settings.autoDetect = autodetectToggle.checked;
-    appState.settings.folderPath = folderPathInput.value.trim();
-    
-    // Dynamically update existing loaded vessel details with the new username if loaded
     if (appState.vessel) {
       appState.vessel.username = appState.settings.vesselUsername || "ASPRING";
     }
-
     await saveStateToStorage();
-    showToast("Settings Saved Successfully");
-    
-    // Instantly try connecting to companion
-    checkCompanionStatus();
+    showToast("Settings saved successfully");
     updateUI();
   });
 
-  // Files: Drag & Drop Event bindings
+  // ===== Dropzones (picker + drag/drop, both capture a reusable handle when possible) =====
+  const pickFile = async () => {
+    const [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [{
+        description: "Word Document",
+        accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] }
+      }]
+    });
+    return handle;
+  };
+
   const setupDropzone = (dropzone, input, type) => {
-    dropzone.addEventListener('click', () => input.click());
-    
+    dropzone.addEventListener('click', async () => {
+      // Prefer the File System Access picker so the selection can be reloaded later.
+      if (window.showOpenFilePicker) {
+        try {
+          const handle = await pickFile();
+          if (handle) await loadFromHandle(handle, type);
+        } catch (err) {
+          if (err && err.name !== "AbortError") {
+            console.error(err);
+            input.click(); // fall back to classic input
+          }
+        }
+      } else {
+        input.click();
+      }
+    });
+
     dropzone.addEventListener('dragover', (e) => {
       e.preventDefault();
       dropzone.classList.add('dragover');
     });
 
-    dropzone.addEventListener('dragleave', () => {
-      dropzone.classList.remove('dragover');
-    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 
-    dropzone.addEventListener('drop', (e) => {
+    dropzone.addEventListener('drop', async (e) => {
       e.preventDefault();
       dropzone.classList.remove('dragover');
+      const item = e.dataTransfer.items && e.dataTransfer.items[0];
+
+      // Try to grab a reusable handle from the drop (Chrome supports this).
+      if (item && item.getAsFileSystemHandle) {
+        try {
+          const handle = await item.getAsFileSystemHandle();
+          if (handle && handle.kind === "file" && handle.name.endsWith('.docx')) {
+            await loadFromHandle(handle, type);
+            return;
+          }
+        } catch (_) { /* fall through to File path */ }
+      }
+
       const files = e.dataTransfer.files;
       if (files.length > 0 && files[0].name.endsWith('.docx')) {
-        handleLocalUpload(files[0], type);
+        loadFromFile(files[0], type);
       } else {
         showToast("Please drop a Word document (.docx) file.");
       }
@@ -457,20 +533,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     input.addEventListener('change', (e) => {
       const files = e.target.files;
-      if (files.length > 0) {
-        handleLocalUpload(files[0], type);
-      }
+      if (files.length > 0) loadFromFile(files[0], type);
     });
   };
 
   setupDropzone(vesselDropzone, vesselFileInput, "vessel");
   setupDropzone(crewDropzone, crewFileInput, "crew");
 
-  // 7. Initial Startup Execution
+  // ===== Startup =====
   await loadStateFromStorage();
   updateUI();
-  
-  // Periodic sync check
-  checkCompanionStatus();
-  setInterval(checkCompanionStatus, 8000);
 });
