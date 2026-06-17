@@ -1,6 +1,6 @@
 // ERP Account Switcher — Popup Logic
-// Supports Advantage Tankers / Geden Lines theming, domain-aware login,
-// and reloading tokens straight from the previously selected Word files.
+// Geden Lines ERP & GMS portals: domain-aware login, theming, reload-from-disk,
+// pinning, clipboard copy, quick portal access and token-age warnings.
 
 // ===== Static config =====
 
@@ -12,9 +12,18 @@ const DEFAULT_THEME = "advantage";
 
 // Per-portal logout/login routing. Keys are URL hosts.
 const PORTAL_CONFIG = {
-  "app.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon" },
-  "gms.gedenlines.com": { logoutPath: "/Logout",         loginPath: "/login" }
+  "app.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "ERP", dotClass: "erp" },
+  "gms.gedenlines.com": { logoutPath: "/Logout",         loginPath: "/login",         label: "GMS", dotClass: "gms" }
 };
+
+// "Open portal" quick links.
+const PORTALS = {
+  erp: "https://app.gedenlines.com/Account/Logon",
+  gms: "https://gms.gedenlines.com/login"
+};
+
+// Tokens are rotated weekly — warn once a file is older than this.
+const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ===== Tiny IndexedDB store for FileSystemFileHandles (so we can re-read on reload) =====
 
@@ -48,6 +57,19 @@ const idbGetHandle = async (key) => {
   });
 };
 
+// Human-friendly "x ago" from a timestamp.
+const humanAge = (ts) => {
+  if (!ts) return "";
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs > 1 ? "s" : ""} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
   // ===== UI Selectors =====
   const tabs = document.querySelectorAll('.tab-btn');
@@ -65,8 +87,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const vesselFilename = document.getElementById('vessel-filename');
   const vesselFilestatus = document.getElementById('vessel-filestatus');
+  const vesselFilemeta = document.getElementById('vessel-filemeta');
   const crewFilename = document.getElementById('crew-filename');
   const crewFilestatus = document.getElementById('crew-filestatus');
+  const crewFilemeta = document.getElementById('crew-filemeta');
 
   const vesselUsernameInput = document.getElementById('vessel-username-input');
   const vesselPasswordLabel = document.getElementById('vessel-password-label');
@@ -78,6 +102,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const brandIcon = document.getElementById('brand-icon');
   const brandTitle = document.getElementById('brand-title');
 
+  const portalDot = document.getElementById('portal-dot');
+  const portalText = document.getElementById('portal-text');
+  const openErpBtn = document.getElementById('open-erp');
+  const openGmsBtn = document.getElementById('open-gms');
+  const acctCount = document.getElementById('acct-count');
+
   // ===== Application State =====
   let appState = {
     theme: DEFAULT_THEME,
@@ -87,8 +117,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       vesselUsername: "ASPRING",
       vesselPassword: ""
     },
-    loadedFiles: { vessel: "", crew: "" }
+    loadedFiles: { vessel: "", crew: "" },
+    loadedAt: { vessel: null, crew: null },
+    pinned: []    // crew emails pinned to the top
   };
+
+  // Runtime-only badge state: 'missing' | 'loaded' | 'error'
+  const fileState = { vessel: "missing", crew: "missing" };
 
   // ===== Toast =====
   const showToast = (message) => {
@@ -96,6 +131,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     toast.textContent = message;
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 2200);
+  };
+
+  // ===== Clipboard =====
+  const copyToClipboard = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`${label} copied!`);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); showToast(`${label} copied!`); }
+      catch { showToast("Copy failed."); }
+      ta.remove();
+    }
   };
 
   // ===== Navigation =====
@@ -111,12 +162,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ===== Storage sync =====
   const loadStateFromStorage = () => new Promise(resolve => {
-    chrome.storage.local.get(['theme', 'vessel', 'crew', 'settings', 'loadedFiles'], (result) => {
+    chrome.storage.local.get(['theme', 'vessel', 'crew', 'settings', 'loadedFiles', 'loadedAt', 'pinned'], (result) => {
       if (result.theme && THEMES[result.theme]) appState.theme = result.theme;
       if (result.vessel) appState.vessel = result.vessel;
       if (result.crew) appState.crew = result.crew;
       if (result.settings) appState.settings = { ...appState.settings, ...result.settings };
       if (result.loadedFiles) appState.loadedFiles = { ...appState.loadedFiles, ...result.loadedFiles };
+      if (result.loadedAt) appState.loadedAt = { ...appState.loadedAt, ...result.loadedAt };
+      if (Array.isArray(result.pinned)) appState.pinned = result.pinned;
       resolve();
     });
   });
@@ -127,7 +180,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       vessel: appState.vessel,
       crew: appState.crew,
       settings: appState.settings,
-      loadedFiles: appState.loadedFiles
+      loadedFiles: appState.loadedFiles,
+      loadedAt: appState.loadedAt,
+      pinned: appState.pinned
     }, () => resolve());
   });
 
@@ -166,31 +221,73 @@ document.addEventListener('DOMContentLoaded', async () => {
     delete themeToggle.dataset.preview;
   });
 
-  // ===== UI Redraw =====
-  const updateUI = () => {
-    if (appState.loadedFiles.vessel) {
-      vesselFilename.textContent = appState.loadedFiles.vessel;
-      vesselFilestatus.textContent = "Loaded";
-      vesselFilestatus.className = "status-badge loaded";
+  // ===== Pinning =====
+  const isPinned = (email) => appState.pinned.includes(email);
+
+  const togglePin = async (email) => {
+    if (isPinned(email)) {
+      appState.pinned = appState.pinned.filter(e => e !== email);
     } else {
-      vesselFilename.textContent = "vessel-token.docx";
-      vesselFilestatus.textContent = "Missing";
-      vesselFilestatus.className = "status-badge missing";
+      appState.pinned = [...appState.pinned, email];
+    }
+    await saveStateToStorage();
+    renderAccounts(searchBar.value || "");
+  };
+
+  // ===== File status badge + age =====
+  const renderFileBadge = (type) => {
+    const nameEl = type === "vessel" ? vesselFilename : crewFilename;
+    const badgeEl = type === "vessel" ? vesselFilestatus : crewFilestatus;
+    const metaEl = type === "vessel" ? vesselFilemeta : crewFilemeta;
+    const defaultName = type === "vessel" ? "vessel-token.docx" : "crew-tokens.docx";
+    const fname = appState.loadedFiles[type];
+    const st = fileState[type];
+
+    if (st === "loaded" && fname) {
+      nameEl.textContent = fname;
+      badgeEl.textContent = "Loaded";
+      badgeEl.className = "status-badge loaded";
+    } else if (st === "error") {
+      nameEl.textContent = fname || defaultName;
+      badgeEl.textContent = "Error";
+      badgeEl.className = "status-badge error";
+    } else {
+      nameEl.textContent = defaultName;
+      badgeEl.textContent = "Missing";
+      badgeEl.className = "status-badge missing";
     }
 
-    if (appState.loadedFiles.crew) {
-      crewFilename.textContent = appState.loadedFiles.crew;
-      crewFilestatus.textContent = "Loaded";
-      crewFilestatus.className = "status-badge loaded";
+    const ts = appState.loadedAt[type];
+    if (st === "loaded" && ts) {
+      const stale = (Date.now() - ts) > STALE_MS;
+      metaEl.textContent = `${stale ? "⚠️ " : ""}Updated ${humanAge(ts)}`;
+      metaEl.style.color = stale ? "#fbbf24" : "";
     } else {
-      crewFilename.textContent = "crew-tokens.docx";
-      crewFilestatus.textContent = "Missing";
-      crewFilestatus.className = "status-badge missing";
+      metaEl.textContent = "";
     }
+  };
+
+  // Reload button warns when any loaded file is stale.
+  const refreshReloadWarning = () => {
+    const stamps = [appState.loadedAt.vessel, appState.loadedAt.crew].filter(Boolean);
+    const stale = stamps.length > 0 && stamps.some(ts => (Date.now() - ts) > STALE_MS);
+    reloadBtn.classList.toggle('stale', stale);
+    reloadBtn.title = stale
+      ? "Tokens may be outdated — reload to refresh from the saved Word files"
+      : "Reload & re-parse selected Word files";
+  };
+
+  // ===== UI Redraw =====
+  const updateUI = () => {
+    renderFileBadge("vessel");
+    renderFileBadge("crew");
+    refreshReloadWarning();
 
     vesselUsernameInput.value = appState.settings.vesselUsername || "";
     vesselPasswordInput.value = appState.settings.vesselPassword || "";
     vesselPasswordLabel.textContent = `Vessel Password (${appState.settings.vesselUsername || 'ASPRING'})`;
+
+    acctCount.textContent = appState.crew && appState.crew.length ? String(appState.crew.length) : "";
 
     applyTheme();
     renderAccounts(searchBar.value || "");
@@ -223,9 +320,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
             <span class="account-email">User: ${esc(vEmail)} | Token: ${esc(appState.vessel.token)}</span>
           </div>
-          <div class="action-indicator">🔑</div>
+          <div class="card-actions">
+            <button class="icon-btn copy-btn" title="Copy token">📋</button>
+            <div class="action-indicator">🔑</div>
+          </div>
         `;
         card.addEventListener('click', () => triggerAutofill(appState.vessel.username, appState.settings.vesselPassword, appState.vessel.token));
+        card.querySelector('.copy-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyToClipboard(appState.vessel.token, "Token");
+        });
         vesselAccountContainer.appendChild(card);
       }
     } else {
@@ -241,8 +345,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                c.email.toLowerCase().includes(cleanFilter);
       });
 
-      if (filteredCrew.length > 0) {
-        filteredCrew.forEach(c => {
+      // Pinned accounts float to the top (stable within each group).
+      const sortedCrew = [...filteredCrew].sort((a, b) =>
+        (isPinned(a.email) ? 0 : 1) - (isPinned(b.email) ? 0 : 1)
+      );
+
+      if (sortedCrew.length > 0) {
+        sortedCrew.forEach(c => {
+          const pinned = isPinned(c.email);
           const card = document.createElement('div');
           card.className = "account-card";
           card.innerHTML = `
@@ -253,9 +363,21 @@ document.addEventListener('DOMContentLoaded', async () => {
               </div>
               <span class="account-email">${esc(c.email)} | Token: ${esc(c.token)}</span>
             </div>
-            <div class="action-indicator">➜</div>
+            <div class="card-actions">
+              <button class="icon-btn pin-btn ${pinned ? "pinned" : ""}" title="${pinned ? "Unpin" : "Pin to top"}">${pinned ? "★" : "☆"}</button>
+              <button class="icon-btn copy-btn" title="Copy token">📋</button>
+              <div class="action-indicator">➜</div>
+            </div>
           `;
           card.addEventListener('click', () => triggerAutofill(c.email, c.password, c.token));
+          card.querySelector('.pin-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePin(c.email);
+          });
+          card.querySelector('.copy-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyToClipboard(c.token, "Token");
+          });
           crewListContainer.appendChild(card);
         });
       } else {
@@ -270,6 +392,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       `;
     }
   };
+
+  // ===== Portal status + quick open =====
+  const updatePortalStatus = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const host = tab && tab.url ? new URL(tab.url).host : "";
+      const config = PORTAL_CONFIG[host];
+      if (config) {
+        portalDot.className = `pdot ${config.dotClass}`;
+        portalText.textContent = `On ${config.label} portal`;
+      } else {
+        portalDot.className = "pdot none";
+        portalText.textContent = "Not on a Geden portal";
+      }
+    } catch {
+      portalDot.className = "pdot none";
+      portalText.textContent = "Not on a Geden portal";
+    }
+  };
+
+  openErpBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.erp }));
+  openGmsBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.gms }));
 
   // ===== Autofill / login routing =====
   const sendAutofill = (tabId, data) => {
@@ -332,8 +476,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let fullText = "";
     for (let i = 0; i < tNodes.length; i++) fullText += tNodes[i].textContent + " ";
 
+    // Token follows an "... is : XXXXXXX" pattern; allow some length/case flexibility.
     let token = "";
-    const match = fullText.match(/is\s*:\s*([A-Z0-9]{7})/);
+    const match = fullText.match(/is\s*:\s*([A-Za-z0-9]{5,12})/i);
     if (match) token = match[1];
 
     return { username: appState.settings.vesselUsername || "ASPRING", token };
@@ -370,13 +515,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Parse an ArrayBuffer into state for the given type.
   const processBuffer = async (buffer, type, filename) => {
     if (type === "vessel") {
-      appState.vessel = await parseVesselTokenLocal(buffer);
+      const vessel = await parseVesselTokenLocal(buffer);
+      appState.vessel = vessel;
       appState.loadedFiles.vessel = filename;
-      showToast("Vessel token loaded successfully!");
+      appState.loadedAt.vessel = Date.now();
+      if (vessel.token) {
+        fileState.vessel = "loaded";
+        showToast("Vessel token loaded successfully!");
+      } else {
+        fileState.vessel = "error";
+        showToast("No token found in the vessel file.");
+      }
     } else {
-      appState.crew = await parseCrewTokensLocal(buffer);
+      const crewList = await parseCrewTokensLocal(buffer);
+      appState.crew = crewList;
       appState.loadedFiles.crew = filename;
-      showToast(`Loaded ${appState.crew.length} crew accounts!`);
+      appState.loadedAt.crew = Date.now();
+      if (crewList.length > 0) {
+        fileState.crew = "loaded";
+        showToast(`Loaded ${crewList.length} crew accounts!`);
+      } else {
+        fileState.crew = "error";
+        showToast("No crew rows found in the file.");
+      }
     }
     await saveStateToStorage();
     updateUI();
@@ -403,6 +564,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       await idbSetHandle(type === "vessel" ? "vesselHandle" : "crewHandle", handle);
     } catch (err) {
       console.error("Error reading file handle:", err);
+      fileState[type] = "error";
+      updateUI();
       showToast("Error parsing Word document. Please ensure it's valid.");
     }
   };
@@ -414,6 +577,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       await processBuffer(buffer, type, file.name);
     } catch (err) {
       console.error("Error parsing DOCX file:", err);
+      fileState[type] = "error";
+      updateUI();
       showToast("Error parsing Word document. Please ensure it's valid.");
     }
   };
@@ -437,12 +602,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const file = await vesselHandle.getFile();
         appState.vessel = await parseVesselTokenLocal(await file.arrayBuffer());
         appState.loadedFiles.vessel = file.name;
+        appState.loadedAt.vessel = Date.now();
+        fileState.vessel = appState.vessel.token ? "loaded" : "error";
         reloaded++;
       }
       if (crewHandle && await ensureReadPermission(crewHandle)) {
         const file = await crewHandle.getFile();
         appState.crew = await parseCrewTokensLocal(await file.arrayBuffer());
         appState.loadedFiles.crew = file.name;
+        appState.loadedAt.crew = Date.now();
+        fileState.crew = appState.crew.length ? "loaded" : "error";
         reloaded++;
       }
       await saveStateToStorage();
@@ -450,7 +619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       showToast(reloaded > 0 ? "Tokens refreshed from file!" : "Could not access the saved files.");
     } catch (err) {
       console.error("Reload failed:", err);
-      showToast("Reload failed — the file may have moved or been removed.");
+      showToast("Reload failed — the file may have moved or been renamed.");
     } finally {
       reloadBtn.classList.remove('spinning');
       reloadBtn.disabled = false;
@@ -546,5 +715,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ===== Startup =====
   await loadStateFromStorage();
+  // Seed badge state from whatever was previously loaded.
+  fileState.vessel = appState.loadedFiles.vessel ? "loaded" : "missing";
+  fileState.crew = appState.loadedFiles.crew ? "loaded" : "missing";
   updateUI();
+  updatePortalStatus();
 });

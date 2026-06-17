@@ -539,6 +539,133 @@
     .toast.show {
       transform: translateX(-50%) translateY(0);
     }
+
+    /* ===== Portal quick-access bar ===== */
+    .portal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 18px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .portal-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-sub);
+      min-width: 0;
+    }
+
+    .portal-status .pdot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-sub);
+      flex-shrink: 0;
+    }
+    .portal-status .pdot.erp { background: #34d399; box-shadow: 0 0 8px #34d399; }
+    .portal-status .pdot.gms { background: #56ccf2; box-shadow: 0 0 8px #56ccf2; }
+    .portal-status .pdot.none { background: #9ca3af; }
+
+    .portal-btns { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .portal-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      color: var(--text-main);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+    }
+    .portal-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+
+    /* ===== Tab count badge ===== */
+    .count-badge {
+      display: inline-block;
+      min-width: 16px;
+      padding: 0 5px;
+      margin-left: 4px;
+      font-size: 10px;
+      line-height: 15px;
+      border-radius: 8px;
+      background: var(--badge-bg);
+      color: var(--primary);
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .count-badge:empty { display: none; }
+
+    /* ===== File status extras ===== */
+    .status-badge.error { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .file-meta {
+      font-size: 10px;
+      color: var(--text-sub);
+      margin: -4px 0 10px 2px;
+      min-height: 12px;
+    }
+
+    /* ===== Reload stale-warning dot ===== */
+    .reload-btn { position: relative; }
+    .reload-btn.stale::after {
+      content: "";
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #f59e0b;
+      border: 2px solid var(--bg-dark);
+      box-shadow: 0 0 6px #f59e0b;
+    }
+
+    /* ===== Crew list scroll cap ===== */
+    #crew-list-container {
+      max-height: 290px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    /* ===== Card action buttons (pin / copy) ===== */
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+
+    .icon-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+      color: var(--text-sub);
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      padding: 0;
+      font-family: inherit;
+    }
+    .icon-btn:hover { background: var(--primary); color: var(--bg-dark); }
+    .pin-btn.pinned { color: #f2c94c; }
+    .pin-btn.pinned:hover { background: #f2c94c; color: var(--bg-dark); }
   </style>
 </head>
 <body data-theme="advantage">
@@ -557,9 +684,21 @@
     </button>
   </header>
 
+  <!-- Portal quick-access bar -->
+  <div class="portal-bar">
+    <div class="portal-status" id="portal-status">
+      <span class="pdot none" id="portal-dot"></span>
+      <span id="portal-text">Checking active tab…</span>
+    </div>
+    <div class="portal-btns">
+      <button class="portal-btn" id="open-erp" title="Open the ERP login page">Open ERP</button>
+      <button class="portal-btn" id="open-gms" title="Open the GMS login page">Open GMS</button>
+    </div>
+  </div>
+
   <!-- Navigation -->
   <div class="tabs">
-    <button class="tab-btn active" data-tab="pane-accounts">Accounts</button>
+    <button class="tab-btn active" data-tab="pane-accounts">Accounts<span class="count-badge" id="acct-count"></span></button>
     <button class="tab-btn" data-tab="pane-upload">Files</button>
     <button class="tab-btn" data-tab="pane-settings">Vessel Credentials</button>
   </div>
@@ -612,10 +751,12 @@
       <span class="name" id="vessel-filename">vessel-token.docx</span>
       <span class="status-badge missing" id="vessel-filestatus">Missing</span>
     </div>
+    <div class="file-meta" id="vessel-filemeta"></div>
     <div class="file-status">
       <span class="name" id="crew-filename">crew-tokens.docx</span>
       <span class="status-badge missing" id="crew-filestatus">Missing</span>
     </div>
+    <div class="file-meta" id="crew-filemeta"></div>
 
     <div class="hint-box">
       📋 <b>How to make a token file:</b> Open the token email from ERP, select all the
