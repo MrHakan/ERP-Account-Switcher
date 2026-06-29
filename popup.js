@@ -1,6 +1,6 @@
 // ERP Account Switcher — Popup Logic
 // Geden Lines ERP & GMS portals: domain-aware login, theming, reload-from-disk,
-// pinning, clipboard copy, quick portal access and token-age warnings.
+// pinning, inline token editing, quick portal access and token-age warnings.
 
 // ===== Static config =====
 
@@ -133,21 +133,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => toast.classList.remove('show'), 2200);
   };
 
-  // ===== Clipboard =====
-  const copyToClipboard = async (text, label) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(`${label} copied!`);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); showToast(`${label} copied!`); }
-      catch { showToast("Copy failed."); }
-      ta.remove();
-    }
+  // ===== Edit-token modal =====
+  const editModal = document.getElementById('edit-modal');
+  const editModalSub = document.getElementById('edit-modal-sub');
+  const editModalInput = document.getElementById('edit-modal-input');
+  const editModalSave = document.getElementById('edit-modal-save');
+  const editModalCancel = document.getElementById('edit-modal-cancel');
+  let pendingTokenSave = null;
+
+  const closeEditModal = () => {
+    editModal.classList.remove('show');
+    pendingTokenSave = null;
   };
+
+  // Open the modal to edit a token. onSave(newToken) is called when confirmed.
+  const openEditTokenModal = (subtitle, currentToken, onSave) => {
+    editModalSub.textContent = subtitle;
+    editModalInput.value = currentToken || "";
+    pendingTokenSave = onSave;
+    editModal.classList.add('show');
+    editModalInput.focus();
+    editModalInput.select();
+  };
+
+  const commitTokenEdit = () => {
+    const newToken = editModalInput.value.trim();
+    if (!newToken) {
+      showToast("Token cannot be empty.");
+      return;
+    }
+    if (pendingTokenSave) pendingTokenSave(newToken);
+    closeEditModal();
+  };
+
+  editModalSave.addEventListener('click', commitTokenEdit);
+  editModalCancel.addEventListener('click', closeEditModal);
+  editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEditModal(); });
+  editModalInput.addEventListener('keydown', (e) => {
+    if (e.key === "Enter") commitTokenEdit();
+    else if (e.key === "Escape") closeEditModal();
+  });
 
   // ===== Navigation =====
   tabs.forEach(tab => {
@@ -321,14 +346,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="account-email">User: ${esc(vEmail)} | Token: ${esc(appState.vessel.token)}</span>
           </div>
           <div class="card-actions">
-            <button class="icon-btn copy-btn" title="Copy token">📋</button>
+            <button class="icon-btn edit-btn" title="Edit token">✏️</button>
             <div class="action-indicator">🔑</div>
           </div>
         `;
         card.addEventListener('click', () => triggerAutofill(appState.vessel.username, appState.settings.vesselPassword, appState.vessel.token));
-        card.querySelector('.copy-btn').addEventListener('click', (e) => {
+        card.querySelector('.edit-btn').addEventListener('click', (e) => {
           e.stopPropagation();
-          copyToClipboard(appState.vessel.token, "Token");
+          openEditTokenModal(`Vessel Account (${vEmail})`, appState.vessel.token, async (newToken) => {
+            appState.vessel.token = newToken;
+            await saveStateToStorage();
+            renderAccounts(searchBar.value || "");
+            showToast("Vessel token updated.");
+          });
         });
         vesselAccountContainer.appendChild(card);
       }
@@ -365,7 +395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
             <div class="card-actions">
               <button class="icon-btn pin-btn ${pinned ? "pinned" : ""}" title="${pinned ? "Unpin" : "Pin to top"}">${pinned ? "★" : "☆"}</button>
-              <button class="icon-btn copy-btn" title="Copy token">📋</button>
+              <button class="icon-btn edit-btn" title="Edit token">✏️</button>
               <div class="action-indicator">➜</div>
             </div>
           `;
@@ -374,9 +404,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.stopPropagation();
             togglePin(c.email);
           });
-          card.querySelector('.copy-btn').addEventListener('click', (e) => {
+          card.querySelector('.edit-btn').addEventListener('click', (e) => {
             e.stopPropagation();
-            copyToClipboard(c.token, "Token");
+            openEditTokenModal(`${c.name} — ${c.email}`, c.token, async (newToken) => {
+              c.token = newToken;
+              await saveStateToStorage();
+              renderAccounts(searchBar.value || "");
+              showToast("Token updated.");
+            });
           });
           crewListContainer.appendChild(card);
         });

@@ -6,8 +6,7 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting",
-    "clipboardWrite"
+    "scripting"
   ],
   "host_permissions": [
     "https://app.gedenlines.com/*",
