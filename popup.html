@@ -666,6 +666,74 @@
     .icon-btn:hover { background: var(--primary); color: var(--bg-dark); }
     .pin-btn.pinned { color: #f2c94c; }
     .pin-btn.pinned:hover { background: #f2c94c; color: var(--bg-dark); }
+
+    /* ===== Edit-token modal ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      width: 100%;
+      background: var(--bg-card-hover);
+      border: 1px solid var(--primary);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .modal-sub {
+      font-size: 11px;
+      color: var(--text-sub);
+      margin-bottom: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .btn-secondary, .btn-primary {
+      flex: 1;
+      border-radius: 8px;
+      padding: 9px 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      border: 1px solid var(--glass-border);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-main);
+    }
+    .btn-secondary:hover { border-color: var(--text-sub); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: #ffffff;
+      border-color: transparent;
+      box-shadow: 0 4px 10px var(--primary-glow);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 15px var(--primary-glow); }
   </style>
 </head>
 <body data-theme="advantage">
@@ -788,6 +856,19 @@
 
   <!-- Toast Notification -->
   <div id="toast" class="toast">Settings Saved</div>
+
+  <!-- Edit Token Modal -->
+  <div id="edit-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-title">Edit Token</div>
+      <div class="modal-sub" id="edit-modal-sub"></div>
+      <input type="text" id="edit-modal-input" class="form-input" placeholder="Enter new token..." autocomplete="off" spellcheck="false">
+      <div class="modal-actions">
+        <button class="btn-secondary" id="edit-modal-cancel">Cancel</button>
+        <button class="btn-primary" id="edit-modal-save">Save</button>
+      </div>
+    </div>
+  </div>
 
   <script src="jszip.min.js"></script>
   <script src="popup.js"></script>
