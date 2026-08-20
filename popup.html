@@ -705,6 +705,13 @@
       white-space: nowrap;
     }
 
+    .modal-note {
+      font-size: 10.5px;
+      color: var(--text-sub);
+      line-height: 1.45;
+      margin-top: 8px;
+    }
+
     .modal-actions {
       display: flex;
       gap: 8px;
@@ -835,7 +842,13 @@
     <div class="hint-box">
       💡 Once selected, use the <b>⟳ reload</b> button on the Accounts tab to refresh
       tokens straight from the same file — no need to pick it again every week.
-      <b>Note:</b> if you rename the file, reload will not work.
+      <b>Note:</b> if you rename or move the file, reload will not work.
+    </div>
+
+    <div class="hint-box">
+      ✏️ Editing a token from an account card writes the new value back into this
+      Word file as well, so the file and the extension stay in sync. Chrome asks for
+      permission to save the file the first time.
     </div>
   </div>
 
@@ -863,6 +876,7 @@
       <div class="modal-title">Edit Token</div>
       <div class="modal-sub" id="edit-modal-sub"></div>
       <input type="text" id="edit-modal-input" class="form-input" placeholder="Enter new token..." autocomplete="off" spellcheck="false">
+      <div class="modal-note">💾 Saving also writes the new token back into the linked Word file.</div>
       <div class="modal-actions">
         <button class="btn-secondary" id="edit-modal-cancel">Cancel</button>
         <button class="btn-primary" id="edit-modal-save">Save</button>
