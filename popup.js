@@ -354,10 +354,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.querySelector('.edit-btn').addEventListener('click', (e) => {
           e.stopPropagation();
           openEditTokenModal(`Vessel Account (${vEmail})`, appState.vessel.token, async (newToken) => {
+            const oldToken = appState.vessel.token;
+            // Write the file first, while the Save click still counts as a user gesture.
+            const result = await syncVesselTokenToFile(oldToken, newToken);
             appState.vessel.token = newToken;
             await saveStateToStorage();
-            renderAccounts(searchBar.value || "");
-            showToast("Vessel token updated.");
+            updateUI();
+            showToast(fileSyncMessage(result));
           });
         });
         vesselAccountContainer.appendChild(card);
@@ -407,10 +410,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           card.querySelector('.edit-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             openEditTokenModal(`${c.name} — ${c.email}`, c.token, async (newToken) => {
+              const oldToken = c.token;
+              // Write the file first, while the Save click still counts as a user gesture.
+              const result = await syncCrewTokenToFile(c.email, oldToken, newToken);
               c.token = newToken;
               await saveStateToStorage();
-              renderAccounts(searchBar.value || "");
-              showToast("Token updated.");
+              updateUI();
+              showToast(fileSyncMessage(result));
             });
           });
           crewListContainer.appendChild(card);
@@ -586,6 +592,141 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false;
   };
 
+  // Write access is only requested when the user actually edits a token.
+  const ensureWritePermission = async (handle) => {
+    const opts = { mode: "readwrite" };
+    if (await handle.queryPermission(opts) === "granted") return true;
+    if (await handle.requestPermission(opts) === "granted") return true;
+    return false;
+  };
+
+  // Handles are cached in memory so a token edit can request write permission
+  // while the Save click still counts as a user gesture.
+  const handleCache = { vessel: null, crew: null };
+  const handleKey = (type) => (type === "vessel" ? "vesselHandle" : "crewHandle");
+
+  const getHandle = async (type) => {
+    if (handleCache[type]) return handleCache[type];
+    const h = await idbGetHandle(handleKey(type)).catch(() => null);
+    handleCache[type] = h || null;
+    return handleCache[type];
+  };
+
+  const rememberHandle = async (type, handle) => {
+    handleCache[type] = handle;
+    await idbSetHandle(handleKey(type), handle);
+  };
+
+  // ===== DOCX write-back =====
+
+  // Replace `oldText` with `newText` across a run of <w:t> nodes, since Word
+  // often splits a single value over several runs.
+  const replaceAcrossTextNodes = (tNodes, oldText, newText) => {
+    let full = "";
+    const spans = [];
+    for (let i = 0; i < tNodes.length; i++) {
+      const txt = tNodes[i].textContent;
+      spans.push({ node: tNodes[i], start: full.length, end: full.length + txt.length });
+      full += txt;
+    }
+
+    const at = full.indexOf(oldText);
+    if (at === -1) return false;
+    const stop = at + oldText.length;
+
+    let placed = false;
+    for (const s of spans) {
+      if (s.end <= at || s.start >= stop) continue; // node untouched by the range
+      const txt = s.node.textContent;
+      const localStart = Math.max(0, at - s.start);
+      const localEnd = Math.min(s.end, stop) - s.start;
+      s.node.textContent = txt.slice(0, localStart) + (placed ? "" : newText) + txt.slice(localEnd);
+      s.node.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+      placed = true;
+    }
+    return placed;
+  };
+
+  // Put `text` into a table cell, keeping the first run's formatting.
+  const setCellText = (cell, text) => {
+    const tTags = cell.getElementsByTagNameNS("*", "t");
+    if (tTags.length === 0) return false;
+    tTags[0].textContent = text;
+    tTags[0].setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+    for (let i = 1; i < tTags.length; i++) tTags[i].textContent = "";
+    return true;
+  };
+
+  // Open a .docx, let `mutate(xmlDoc)` edit it, then write the file back in place.
+  // Returns { ok, reason }.
+  const rewriteDocx = async (type, mutate) => {
+    const handle = await getHandle(type);
+    if (!handle) return { ok: false, reason: "no-handle" };
+    if (!(await ensureWritePermission(handle))) return { ok: false, reason: "denied" };
+
+    try {
+      const file = await handle.getFile();
+      const zip = await JSZip.loadAsync(await file.arrayBuffer());
+      const docXmlText = await zip.file("word/document.xml").async("text");
+      const xmlDoc = new DOMParser().parseFromString(docXmlText, "text/xml");
+
+      if (!mutate(xmlDoc)) return { ok: false, reason: "not-found" };
+
+      zip.file("word/document.xml", new XMLSerializer().serializeToString(xmlDoc));
+      const blob = await zip.generateAsync({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      appState.loadedAt[type] = Date.now();
+      return { ok: true };
+    } catch (err) {
+      console.error("Could not write the Word file:", err);
+      return { ok: false, reason: "write-failed" };
+    }
+  };
+
+  // Update one crew member's token cell in the crew .docx.
+  const syncCrewTokenToFile = (email, oldToken, newToken) => rewriteDocx("crew", (xmlDoc) => {
+    const rows = xmlDoc.getElementsByTagNameNS("*", "tr");
+    const cellText = (cell) => {
+      const tTags = cell.getElementsByTagNameNS("*", "t");
+      let str = "";
+      for (let j = 0; j < tTags.length; j++) str += tTags[j].textContent;
+      return str.trim();
+    };
+
+    for (let i = 1; i < rows.length; i++) { // skip header row
+      const cells = rows[i].getElementsByTagNameNS("*", "tc");
+      if (cells.length < 5) continue;
+      if (cellText(cells[2]).toLowerCase() !== String(email).toLowerCase()) continue;
+      return setCellText(cells[4], newToken);
+    }
+    return false;
+  });
+
+  // Update the vessel token inside the flowing text of the vessel .docx.
+  const syncVesselTokenToFile = (oldToken, newToken) => rewriteDocx("vessel", (xmlDoc) => {
+    if (!oldToken) return false;
+    const tNodes = xmlDoc.getElementsByTagNameNS("*", "t");
+    return replaceAcrossTextNodes(tNodes, oldToken, newToken);
+  });
+
+  // Human-readable result for the toast after a token edit.
+  const fileSyncMessage = (result) => {
+    if (result.ok) return "Token updated in the app and the Word file.";
+    switch (result.reason) {
+      case "no-handle":   return "Token updated (no linked Word file to write).";
+      case "denied":      return "Token updated in the app only — file write access denied.";
+      case "not-found":   return "Token updated in the app — no matching row found in the Word file.";
+      default:            return "Token updated in the app, but the Word file could not be saved.";
+    }
+  };
+
   // Load from a FileSystemFileHandle and remember it for future reloads.
   const loadFromHandle = async (handle, type) => {
     try {
@@ -596,7 +737,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const file = await handle.getFile();
       const buffer = await file.arrayBuffer();
       await processBuffer(buffer, type, file.name);
-      await idbSetHandle(type === "vessel" ? "vesselHandle" : "crewHandle", handle);
+      await rememberHandle(type, handle);
     } catch (err) {
       console.error("Error reading file handle:", err);
       fileState[type] = "error";
@@ -620,8 +761,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ===== Reload from previously selected files =====
   const reloadFiles = async () => {
-    const vesselHandle = await idbGetHandle("vesselHandle").catch(() => null);
-    const crewHandle = await idbGetHandle("crewHandle").catch(() => null);
+    const vesselHandle = await getHandle("vessel");
+    const crewHandle = await getHandle("crew");
 
     if (!vesselHandle && !crewHandle) {
       showToast("No files selected yet — pick them in the Files tab first.");
@@ -755,4 +896,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   fileState.crew = appState.loadedFiles.crew ? "loaded" : "missing";
   updateUI();
   updatePortalStatus();
+  // Warm the handle cache so a token edit can ask for write access immediately.
+  getHandle("vessel");
+  getHandle("crew");
 });
