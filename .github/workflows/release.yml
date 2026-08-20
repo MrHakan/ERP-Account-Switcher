@@ -1,0 +1,97 @@
+name: Release
+
+# Bump "version" in manifest.json and push to main — that is the whole release
+# process. This workflow validates the extension, packages it and publishes a
+# GitHub Release with the installable .zip attached.
+on:
+  push:
+    branches: [main]
+    paths: ['manifest.json']
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Re-publish even if a release for this version already exists'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate extension
+        run: node .github/scripts/validate.mjs
+
+      - name: Read version from manifest
+        id: meta
+        run: |
+          VERSION="$(jq -r '.version' manifest.json)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Manifest version: $VERSION"
+
+      - name: Check whether the release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.meta.outputs.tag }} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package extension
+        if: steps.check.outputs.exists == 'false' || inputs.force
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Ship only what Chrome loads — no repo/CI scaffolding, no docs.
+          zip -qr "dist/erp-account-switcher-${{ steps.meta.outputs.tag }}.zip" . \
+            -x '.git/*' '.github/*' 'dist/*' '*.docx' '*.zip' '.gitignore'
+          echo "Packaged contents:"
+          unzip -l "dist/erp-account-switcher-${{ steps.meta.outputs.tag }}.zip"
+
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false' || inputs.force
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          ASSETS=("dist/erp-account-switcher-$TAG.zip")
+          # Attach the user guide too, when it is present.
+          shopt -s nullglob
+          for doc in *.docx; do ASSETS+=("$doc"); done
+
+          {
+            printf '### Install\n\n'
+            printf '1. Download `erp-account-switcher-%s.zip` below and unzip it.\n' "$TAG"
+            printf '2. Open `chrome://extensions` and turn on **Developer mode**.\n'
+            printf '3. Click **Load unpacked** and select the unzipped folder.\n\n'
+            printf 'Updating from an earlier version? Replace the old folder with this '
+            printf 'one, then press **↻** on the extension card in `chrome://extensions`.\n'
+          } > /tmp/notes.md
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            echo "Updated assets on existing release $TAG."
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "$TAG" \
+              --notes-file /tmp/notes.md \
+              --generate-notes \
+              --target "$GITHUB_SHA"
+            echo "Published release $TAG."
+          fi
+
+      - name: Nothing to do
+        if: steps.check.outputs.exists == 'true' && !inputs.force
+        run: |
+          echo "::notice::Release ${{ steps.meta.outputs.tag }} already exists — bump \"version\" in manifest.json to publish a new one."
