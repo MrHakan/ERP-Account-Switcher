@@ -1,0 +1,27 @@
+name: CI
+
+# Guards the release workflow: nothing reaches main without a loadable manifest
+# and parseable scripts.
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate extension
+        run: node .github/scripts/validate.mjs
+
+      - name: Report packaged contents
+        run: |
+          set -euo pipefail
+          zip -qr /tmp/ext.zip . \
+            -x '.git/*' '.github/*' 'dist/*' '*.docx' '*.zip' '.gitignore'
+          echo "Packaged extension: $(du -h /tmp/ext.zip | cut -f1)"
+          unzip -l /tmp/ext.zip
