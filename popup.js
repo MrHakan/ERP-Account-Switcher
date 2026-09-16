@@ -1,5 +1,5 @@
 // ERP Account Switcher — Popup Logic
-// Geden Lines ERP & GMS portals: domain-aware login, theming, reload-from-disk,
+// Geden Lines ERP, GMS & FORM portals: domain-aware login, theming, reload-from-disk,
 // pinning, inline token editing, quick portal access and token-age warnings.
 
 // ===== Static config =====
@@ -12,8 +12,9 @@ const DEFAULT_THEME = "advantage";
 
 // Per-portal logout/login routing. Keys are URL hosts.
 const PORTAL_CONFIG = {
-  "app.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "ERP", dotClass: "erp" },
-  "gms.gedenlines.com": { logoutPath: "/Logout",         loginPath: "/login",         label: "GMS", dotClass: "gms" }
+  "app.gedenlines.com":  { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "ERP",  dotClass: "erp" },
+  "gms.gedenlines.com":  { logoutPath: "/Logout",         loginPath: "/login",         label: "GMS",  dotClass: "gms" },
+  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "FORM", dotClass: "erp" }
 };
 
 // "Open portal" quick links.
