@@ -1,6 +1,6 @@
 // ERP Account Switcher — Content Script
-// Handles automated login-form filling/submission on the Geden Lines and
-// Advantage Tankers (gms / app .gedenlines.com) portals.
+// Handles automated login-form filling/submission on the Geden Lines
+// app / gms / form .gedenlines.com portals.
 
 // Login page paths for the supported portals (lower-case, prefix match).
 const LOGIN_PATHS = ["/account/logon", "/login"];
