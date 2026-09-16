@@ -1,0 +1,188 @@
+name: Apply FORM portal popup UI patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/form-ui-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch popup UI and FORM status
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one {label} match, found {count}")
+              return text.replace(old, new, 1)
+
+          html_path = Path('popup.html')
+          html = html_path.read_text(encoding='utf-8')
+
+          html = replace_once(
+              html,
+              '''    .portal-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                padding: 8px 18px;
+                background: rgba(0, 0, 0, 0.2);
+                border-bottom: 1px solid var(--glass-border);
+              }'''.replace('              ', ''),
+              '''    .portal-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+                padding: 8px 12px;
+                background: rgba(0, 0, 0, 0.2);
+                border-bottom: 1px solid var(--glass-border);
+              }'''.replace('              ', ''),
+              'portal-bar CSS'
+          )
+
+          html = replace_once(
+              html,
+              '''    .portal-status {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                color: var(--text-sub);
+                min-width: 0;
+              }'''.replace('              ', ''),
+              '''    .portal-status {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                flex: 1 1 auto;
+                min-width: 0;
+                font-size: 10.5px;
+                color: var(--text-sub);
+              }
+
+              #portal-text {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+              }'''.replace('              ', ''),
+              'portal-status CSS'
+          )
+
+          html = replace_once(
+              html,
+              '    .portal-btns { display: flex; gap: 6px; flex-shrink: 0; }',
+              '    .portal-btns { display: flex; gap: 4px; flex-shrink: 0; }',
+              'portal button group CSS'
+          )
+
+          html = replace_once(
+              html,
+              '''    .portal-btn {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid var(--glass-border);
+                color: var(--text-main);
+                border-radius: 6px;
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+                font-family: inherit;
+                transition: all 0.2s ease;
+              }'''.replace('              ', ''),
+              '''    .portal-btn {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid var(--glass-border);
+                color: var(--text-main);
+                border-radius: 6px;
+                padding: 5px 7px;
+                font-size: 10.5px;
+                font-weight: 600;
+                cursor: pointer;
+                font-family: inherit;
+                transition: all 0.2s ease;
+                white-space: nowrap;
+              }'''.replace('              ', ''),
+              'portal button CSS'
+          )
+
+          html = replace_once(
+              html,
+              '''      <button class="portal-btn" id="open-erp" title="Open the ERP login page">Open ERP</button>
+              <button class="portal-btn" id="open-gms" title="Open the GMS login page">Open GMS</button>'''.replace('              ', ''),
+              '''      <button class="portal-btn" id="open-erp" title="Open the ERP login page">Open ERP</button>
+              <button class="portal-btn" id="open-gms" title="Open the GMS login page">Open GMS</button>
+              <button class="portal-btn" id="open-form" title="Open the FORM login page">Open Form</button>'''.replace('              ', ''),
+              'Open Form button markup'
+          )
+
+          html_path.write_text(html, encoding='utf-8')
+
+          js_path = Path('popup.js')
+          js = js_path.read_text(encoding='utf-8')
+
+          js = replace_once(
+              js,
+              '  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "FORM", dotClass: "erp" }',
+              '  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "Geden", dotClass: "erp" }',
+              'FORM portal label'
+          )
+
+          js = replace_once(
+              js,
+              '''const PORTALS = {
+                erp: "https://app.gedenlines.com/Account/Logon",
+                gms: "https://gms.gedenlines.com/login"
+              };'''.replace('              ', ''),
+              '''const PORTALS = {
+                erp: "https://app.gedenlines.com/Account/Logon",
+                gms: "https://gms.gedenlines.com/login",
+                form: "https://form.gedenlines.com/Account/Logon"
+              };'''.replace('              ', ''),
+              'FORM quick link config'
+          )
+
+          js = replace_once(
+              js,
+              '''  openErpBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.erp }));
+                openGmsBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.gms }));'''.replace('                ', ''),
+              '''  openErpBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.erp }));
+                openGmsBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.gms }));
+                document.getElementById('open-form').addEventListener('click', () => chrome.tabs.create({ url: PORTALS.form }));'''.replace('                ', ''),
+              'Open Form click handler'
+          )
+
+          js_path.write_text(js, encoding='utf-8')
+
+      - name: Validate JavaScript and patch
+        run: |
+          node --check popup.js
+          grep -q 'id="open-form"' popup.html
+          grep -q 'On ${config.label} portal' popup.js
+          grep -q 'label: "Geden"' popup.js
+          git diff --check
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add popup.html popup.js
+          git commit -m "feat: add FORM quick access to popup"
+          git push
