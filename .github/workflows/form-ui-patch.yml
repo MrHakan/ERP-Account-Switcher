@@ -1,3 +1,4 @@
+# One-shot helper workflow; remove after successful patch.
 name: Apply FORM portal popup UI patch
 
 on:
