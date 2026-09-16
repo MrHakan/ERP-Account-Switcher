@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Account Switcher for ERP&GMS",
-  "version": "2.0",
-  "description": "Account switcher for Geden Lines ERP & GMS portals with token file parsing and theming. By D/C Hakan Efe Gulacti",
+  "name": "Account Switcher for ERP, GMS & FORM",
+  "version": "2.1",
+  "description": "Account switcher for Geden Lines ERP, GMS & FORM portals with token file parsing and theming. By D/C Hakan Efe Gulacti",
   "permissions": [
     "storage",
     "activeTab",
@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://app.gedenlines.com/*",
-    "https://gms.gedenlines.com/*"
+    "https://gms.gedenlines.com/*",
+    "https://form.gedenlines.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -34,7 +35,8 @@
     {
       "matches": [
         "https://app.gedenlines.com/*",
-        "https://gms.gedenlines.com/*"
+        "https://gms.gedenlines.com/*",
+        "https://form.gedenlines.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_end"
