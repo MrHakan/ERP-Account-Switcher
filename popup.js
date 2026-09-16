@@ -14,13 +14,14 @@ const DEFAULT_THEME = "advantage";
 const PORTAL_CONFIG = {
   "app.gedenlines.com":  { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "ERP",  dotClass: "erp" },
   "gms.gedenlines.com":  { logoutPath: "/Logout",         loginPath: "/login",         label: "GMS",  dotClass: "gms" },
-  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "FORM", dotClass: "erp" }
+  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "Geden", dotClass: "erp" }
 };
 
 // "Open portal" quick links.
 const PORTALS = {
   erp: "https://app.gedenlines.com/Account/Logon",
-  gms: "https://gms.gedenlines.com/login"
+  gms: "https://gms.gedenlines.com/login",
+  form: "https://form.gedenlines.com/Account/Logon"
 };
 
 // Tokens are rotated weekly — warn once a file is older than this.
@@ -456,6 +457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   openErpBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.erp }));
   openGmsBtn.addEventListener('click', () => chrome.tabs.create({ url: PORTALS.gms }));
+  document.getElementById('open-form').addEventListener('click', () => chrome.tabs.create({ url: PORTALS.form }));
 
   // ===== Autofill / login routing =====
   const sendAutofill = (tabId, data) => {
