@@ -74,10 +74,25 @@ const checkPendingLogin = () => {
 
     if (isLoginPage(window.location.pathname)) {
       const { username, password, token } = pending;
-      // Clear immediately to prevent loops.
-      chrome.storage.local.remove(['pendingLogin'], () => {
-        setTimeout(() => executeAutofill(username, password, token), 150);
-      });
+
+      const beginLogin = () => {
+        // Clear immediately to prevent login loops, then submit.
+        chrome.storage.local.remove(['pendingLogin'], () => {
+          setTimeout(() => executeAutofill(username, password, token), 150);
+        });
+      };
+
+      // FORM switches authenticate on app.gedenlines.com. Remember where to
+      // return only after a successful login takes us away from the login page.
+      if (pending.returnUrl) {
+        let fromHost = "";
+        try { fromHost = new URL(pending.loginUrl).host; } catch (_) {}
+        chrome.storage.local.set({
+          postLoginRedirect: { url: pending.returnUrl, fromHost }
+        }, beginLogin);
+      } else {
+        beginLogin();
+      }
     } else if (pending.loginUrl && !pending.redirected) {
       // Logged out but the server didn't drop us on the login page — go there once.
       chrome.storage.local.set({ pendingLogin: { ...pending, redirected: true } }, () => {
@@ -87,6 +102,23 @@ const checkPendingLogin = () => {
       // Already redirected once and still not a login page — give up to avoid loops.
       chrome.storage.local.remove(['pendingLogin']);
     }
+  });
+};
+
+// After a FORM-originated login succeeds, app.gedenlines.com will load a
+// non-login page. At that point, return the same tab to FORM /home.
+const checkPostLoginRedirect = () => {
+  chrome.storage.local.get(['postLoginRedirect'], (result) => {
+    const redirect = result.postLoginRedirect;
+    if (!redirect || !redirect.url) return;
+
+    if (redirect.fromHost && window.location.host !== redirect.fromHost) return;
+    if (isLoginPage(window.location.pathname)) return;
+
+    chrome.storage.local.remove(['postLoginRedirect'], () => {
+      if (window.location.href === redirect.url) return;
+      window.location.replace(redirect.url);
+    });
   });
 };
 
@@ -100,3 +132,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 checkPendingLogin();
+checkPostLoginRedirect();
