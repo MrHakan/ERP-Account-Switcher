@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Account Switcher for ERP, GMS & FORM",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Account switcher for Geden Lines ERP, GMS & FORM portals with token file parsing and theming. By D/C Hakan Efe Gulacti",
   "permissions": [
     "storage",
