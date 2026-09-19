@@ -14,14 +14,21 @@ const DEFAULT_THEME = "advantage";
 const PORTAL_CONFIG = {
   "app.gedenlines.com":  { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "ERP",  dotClass: "erp" },
   "gms.gedenlines.com":  { logoutPath: "/Logout",         loginPath: "/login",         label: "GMS",  dotClass: "gms" },
-  "form.gedenlines.com": { logoutPath: "/Account/Logout", loginPath: "/Account/Logon", label: "Geden", dotClass: "erp" }
+  "form.gedenlines.com": {
+    logoutPath: "/Account/Logout?p=x",
+    loginPath: "/Account/Logon",
+    authOrigin: "https://app.gedenlines.com",
+    returnUrl: "https://form.gedenlines.com/home",
+    label: "Geden",
+    dotClass: "erp"
+  }
 };
 
 // "Open portal" quick links.
 const PORTALS = {
   erp: "https://app.gedenlines.com/Account/Logon",
   gms: "https://gms.gedenlines.com/login",
-  form: "https://form.gedenlines.com/Account/Logon"
+  form: "https://form.gedenlines.com/home"
 };
 
 // Tokens are rotated weekly — warn once a file is older than this.
@@ -494,19 +501,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const path = urlObj.pathname.toLowerCase();
-    const onLoginPage = path.startsWith(config.loginPath.toLowerCase());
+    const authOrigin = config.authOrigin || urlObj.origin;
+    const onLoginPage = urlObj.origin === authOrigin &&
+      path.startsWith(config.loginPath.toLowerCase());
 
     if (onLoginPage) {
       sendAutofill(tab.id, { username, password, token });
     } else {
-      // Logged in elsewhere — log out first, then the content script auto-fills on the login page.
-      const loginUrl = urlObj.origin + config.loginPath;
-      const logoutUrl = urlObj.origin + config.logoutPath;
-      chrome.storage.local.set({
-        pendingLogin: { username, password, token, loginUrl }
-      }, () => {
-        showToast("Logging out current account...");
-        chrome.tabs.update(tab.id, { url: logoutUrl });
+      // Logged in elsewhere — log out through the portal's auth origin, then
+      // let the content script fill the login page. FORM deliberately uses
+      // the ERP auth session and returns to FORM /home after successful login.
+      const loginUrl = authOrigin + config.loginPath;
+      const logoutUrl = authOrigin + config.logoutPath;
+      const pendingLogin = {
+        username,
+        password,
+        token,
+        loginUrl,
+        returnUrl: config.returnUrl || null
+      };
+
+      // Clear any stale post-login redirect before starting a fresh switch.
+      chrome.storage.local.remove(['postLoginRedirect'], () => {
+        chrome.storage.local.set({ pendingLogin }, () => {
+          showToast("Logging out current account...");
+          chrome.tabs.update(tab.id, { url: logoutUrl });
+        });
       });
     }
   };
